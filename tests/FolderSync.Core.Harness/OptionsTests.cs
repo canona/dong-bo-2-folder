@@ -38,6 +38,10 @@ public static class OptionsTests
         JobOptionsPersistence();
         HistoryCleanup();
         CopyCreationTimeOption();
+        IncludeThroughScanner();
+        CreateFoldersOnlyFirstRun();
+        NoHashMode();
+        LegacyJobMigration();
         return (_pass, _fail);
     }
 
@@ -136,5 +140,97 @@ public static class OptionsTests
         var got = File.GetCreationTimeUtc(Full(right, "a.txt"));
         Check("CopyCreationTime bat: dich mang creation time cua nguon",
             (got - wanted).Duration() < TimeSpan.FromSeconds(2), $"got={got:o} wanted={wanted:o}");
+    }
+
+    // --- Include phai di qua Scanner: thu muc con khong bi chan boi mau chi danh cho file ---
+    private static void IncludeThroughScanner()
+    {
+        var root = NewTempDir("inc-scan");
+        Write(root, "a.txt", "1"); Write(root, "sub/b.txt", "2"); Write(root, "sub/deep/c.txt", "3");
+        Write(root, "sub/x.log", "4"); Write(root, "logs/y.txt", "5"); Write(root, "cache/z.txt", "6");
+
+        var inc = new FolderScanner(new JobOptions { IncludePatterns = "*.txt" }.BuildFilter()).Scan(root).Entries;
+        Check("Include *.txt qua Scanner: lay ca file trong thu muc con",
+            inc.Count == 5 && inc.ContainsKey("sub/deep/c.txt") && !inc.ContainsKey("sub/x.log"),
+            string.Join(",", inc.Keys));
+
+        var exc = new FolderScanner(new JobOptions { ExcludePatterns = "logs/*\ncache" }.BuildFilter()).Scan(root).Entries;
+        Check("Exclude 'logs/*' va 'cache' qua Scanner: bo ca thu muc",
+            exc.Count == 4 && !exc.ContainsKey("logs/y.txt") && !exc.ContainsKey("cache/z.txt"),
+            string.Join(",", exc.Keys));
+    }
+
+    // --- CreateFoldersIfMissing: chi lan chay dau, khong bao gio qua mat chot RootMissing ---
+    private static void CreateFoldersOnlyFirstRun()
+    {
+        var root = NewTempDir("mk");
+        var left = Path.Combine(root, "L"); var right = Path.Combine(root, "R-chua-co");
+        Directory.CreateDirectory(left);
+        for (int i = 0; i < 10; i++) Write(left, $"f{i}.txt", "d" + i);
+        using var store = new SqliteStateStore(Path.Combine(root, "s.db"));
+        SyncSession Session() => new("j", left, right, SyncMode.TwoWay, store,
+            new SyncOptions(MaxDeletePercent: 100), createMissingRoots: true);
+
+        var preview = Session().AnalyzeOnly();
+        Check("CreateFolders: Analyze KHONG tao folder", !Directory.Exists(right));
+
+        var first = Session().Run();
+        Check("CreateFolders: lan chay dau tao folder dich va copy du",
+            Directory.Exists(right) && first.Result!.Copied == 10
+            && first.ScanErrors.Any(e => e.Contains("Da tao folder")), $"copied={first.Result?.Copied}");
+
+        // Trai bien mat sau khi da co state (USB bi rut) - khong duoc tu tao lai roi xoa sach Phai
+        Directory.Move(left, left + "-mat");
+        var second = Session().Run();
+        Check("CreateFolders: da co state, goc mat -> KHONG tao lai, huy, Phai con du 10 file (ke ca nguong 100%)",
+            !Directory.Exists(left) && second.Result!.Aborted && Directory.GetFiles(right).Length == 10,
+            $"aborted={second.Result?.Aborted} left ton tai={Directory.Exists(left)} con={Directory.GetFiles(right).Length}");
+    }
+
+    // --- Tat CompareChecksums: file giong het khong thanh xung dot, state so ca mtime ---
+    private static void NoHashMode()
+    {
+        var root = NewTempDir("nohash");
+        var left = Path.Combine(root, "L"); var right = Path.Combine(root, "R");
+        Write(left, "same.txt", "SAME"); Write(right, "same.txt", "SAME");
+        File.SetLastWriteTimeUtc(Full(right, "same.txt"), File.GetLastWriteTimeUtc(Full(left, "same.txt")));
+        Write(left, "diff.txt", "AAAA"); Write(right, "diff.txt", "BBBB");
+        File.SetLastWriteTimeUtc(Full(right, "diff.txt"), new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        using var store = new SqliteStateStore(Path.Combine(root, "s.db"));
+        var session = new SyncSession("j", left, right, SyncMode.TwoWay, store, computeHashes: false);
+
+        var acts = session.AnalyzeOnly().Actions.ToDictionary(a => a.RelativePath, a => a.Kind);
+        Check("Khong hash: 2 file giong het (cung size+mtime) -> Skip, khong xung dot gia",
+            acts["same.txt"] == SyncActionKind.Skip, acts["same.txt"].ToString());
+        Check("Khong hash: cung size khac mtime -> van la xung dot", acts["diff.txt"] == SyncActionKind.Conflict,
+            acts["diff.txt"].ToString());
+
+        session.Run();
+        var state = store.LoadState("j");
+        Check("Khong hash: state chi ghi file giong ca size+mtime (diff.txt khong vao state)",
+            state.ContainsKey("same.txt") && !state.ContainsKey("diff.txt"), string.Join(",", state.Keys));
+    }
+
+    // --- DB cu (chua co settings_json): Job cu giu hanh vi cu, khong tu xoa history ---
+    private static void LegacyJobMigration()
+    {
+        var dbPath = Path.Combine(NewTempDir("legacy"), "s.db");
+        using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Pooling=False"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE jobs (id TEXT PRIMARY KEY, name TEXT NOT NULL, left_root TEXT NOT NULL,
+                    right_root TEXT NOT NULL, mode INTEGER NOT NULL, conflict_policy INTEGER NOT NULL DEFAULT 0);
+                INSERT INTO jobs VALUES ('old', 'Job cu', 'C:/a', 'C:/b', 2, 0);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        using var store = new SqliteStateStore(dbPath);
+        var o = JobOptions.FromJson(store.ListJobs().Single().SettingsJson);
+        Check("Migration: Job cu KHONG bat tu don history / copy thuoc tinh",
+            !o.CleanupHistory && !o.CopyAttributes && !o.CopyCreationTime && o.CompareChecksums);
+        Check("FromJson(\"{}\") = Legacy, FromJson(null) = mac dinh Job moi",
+            !JobOptions.FromJson("{}").CleanupHistory && JobOptions.FromJson(null).CleanupHistory);
     }
 }

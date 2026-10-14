@@ -41,7 +41,8 @@ public sealed class SyncSession
         bool detectRenames = true,
         bool computeHashes = true,
         bool backupPropagateDeletes = false,
-        TimeSpan? timeTolerance = null)
+        TimeSpan? timeTolerance = null,
+        bool createMissingRoots = false)
     {
         _jobId = jobId;
         _leftRoot = leftRoot;
@@ -54,6 +55,38 @@ public sealed class SyncSession
         _analyzer = new ThreeWayAnalyzer(timeTolerance, backupPropagateDeletes);
         _detectRenames = detectRenames;
         _computeHashes = computeHashes;
+        _timeTolerance = timeTolerance ?? TimeSpan.FromSeconds(2);
+        _createMissingRoots = createMissingRoots;
+    }
+
+    private readonly TimeSpan _timeTolerance;
+    private readonly bool _createMissingRoots;
+
+    /// <summary>
+    /// Tuy chon "Tao folder neu thieu" - CHI ap dung o lan chay dau (Job chua co state):
+    /// 1 chieu chi tao phia dich (Phai), 2 chieu tao phia thieu. Da co state ma goc bien mat
+    /// thi gan nhu chac chan la o/USB bi rut - tao folder rong luc do se bien no thanh
+    /// "nguoi dung da xoa het" va qua mat chot RootMissing. Analyze khong bao gio goi ham nay.
+    /// </summary>
+    private IReadOnlyList<string> EnsureRootsForFirstRun()
+    {
+        var created = new List<string>();
+        if (!_createMissingRoots || _store.LoadState(_jobId).Count > 0) return created;
+        var roots = _mode == SyncMode.TwoWay ? new[] { _leftRoot, _rightRoot } : new[] { _rightRoot };
+        foreach (var root in roots)
+        {
+            if (Directory.Exists(root)) continue;
+            try
+            {
+                Directory.CreateDirectory(root);
+                created.Add($"Da tao folder (lan chay dau): {root}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                created.Add($"Khong tao duoc folder {root}: {ex.Message}");
+            }
+        }
+        return created;
     }
 
     private sealed record AnalysisContext(
@@ -102,8 +135,9 @@ public sealed class SyncSession
     public SessionOutcome Run(IProgress<SyncProgress>? progress = null)
     {
         var started = DateTime.UtcNow;
+        var rootNotes = EnsureRootsForFirstRun();
         var ctx = Analyze();
-        var preview = ctx.Outcome;
+        var preview = ctx.Outcome with { ScanErrors = rootNotes.Concat(ctx.Outcome.ScanErrors).ToList() };
         var stateBefore = ctx.State;
 
         SyncResult result;
@@ -128,7 +162,7 @@ public sealed class SyncSession
         {
             var leftAfter = _scanner.Scan(_leftRoot, computeHashes: _computeHashes);
             var rightAfter = _scanner.Scan(_rightRoot, computeHashes: _computeHashes);
-            var newState = ComputeSyncedState(leftAfter.Entries, rightAfter.Entries);
+            var newState = ComputeSyncedState(leftAfter.Entries, rightAfter.Entries, _timeTolerance);
             var unreadable = ctx.Left.FailedPaths.Concat(ctx.Right.FailedPaths)
                 .Concat(leftAfter.FailedPaths).Concat(rightAfter.FailedPaths).ToList();
             _store.SaveState(_jobId, KeepUnreadableState(newState, stateBefore, unreadable));
@@ -178,18 +212,25 @@ public sealed class SyncSession
         return result;
     }
 
-    /// <summary>State moi = cac file ca hai phia cung co va da giong nhau (size + hash).</summary>
+    /// <summary>
+    /// State moi = cac file ca hai phia cung co va da giong nhau: size + hash, hoac size + mtime
+    /// trong dung sai khi khong co hash (Job tat CompareChecksums).
+    /// </summary>
     internal static IReadOnlyDictionary<string, FileEntry> ComputeSyncedState(
         IReadOnlyDictionary<string, FileEntry> left,
-        IReadOnlyDictionary<string, FileEntry> right)
+        IReadOnlyDictionary<string, FileEntry> right,
+        TimeSpan timeTolerance)
     {
         var result = new Dictionary<string, FileEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var (path, l) in left)
         {
             if (!right.TryGetValue(path, out var r)) continue;
             if (l.Size != r.Size) continue;
-            if (l.Hash is not null && r.Hash is not null
-                && !string.Equals(l.Hash, r.Hash, StringComparison.OrdinalIgnoreCase)) continue;
+            if (l.Hash is not null && r.Hash is not null)
+            {
+                if (!string.Equals(l.Hash, r.Hash, StringComparison.OrdinalIgnoreCase)) continue;
+            }
+            else if ((l.MtimeUtc - r.MtimeUtc).Duration() > timeTolerance) continue;
             result[path] = l;
         }
         return result;

@@ -92,4 +92,26 @@ public sealed class SyncFilter
         if (_include.Count > 0 && !MatchesAny(_include, _includeBare, rel, name, parts)) return false;
         return true;
     }
+
+    /// <summary>
+    /// Scanner co duoc di vao thu muc nay khong. Chi ap thu muc mac dinh bi loai + mau Exclude;
+    /// Include chi danh cho FILE - neu ap cho thu muc thi Include "*.txt" se chan moi thu muc con.
+    /// Mau Exclude co '/' khop thu muc khi khop "duong/dan/" (vd "logs/*" loai ca thu muc logs).
+    /// </summary>
+    public bool IsDirectoryIncluded(string relativeDir)
+    {
+        var parts = relativeDir.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return true;
+        foreach (var part in parts)
+            if (DefaultExcludedDirs.Contains(part, StringComparer.OrdinalIgnoreCase)) return false;
+        if (_exclude.Count == 0) return true;
+
+        var rel = string.Join('/', parts);
+        foreach (var seg in parts)
+            foreach (var b in _excludeBare)
+                if (GlobToRegexCache(b).IsMatch(seg)) return false;
+        foreach (var re in _exclude)
+            if (re.IsMatch(rel) || re.IsMatch(rel + "/")) return false;
+        return true;
+    }
 }

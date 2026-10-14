@@ -50,7 +50,7 @@
                         <CheckBox x:Name="PropagateDeletesCheck" Margin="0,2"
                                   Content="Lan truyen xoa (chi che do Backup: nguon xoa thi dich cung xoa)"/>
                         <CheckBox x:Name="CreateFoldersCheck" Margin="0,2"
-                                  Content="Tao folder Trai/Phai neu chua ton tai khi chay Job"/>
+                                  Content="Tao folder dich neu chua ton tai (chi lan chay dau - USB/o bi rut sau do se KHONG tu tao)"/>
                         <GroupBox Header="Thu muc lich su (file bi xoa/ghi de)" Margin="0,10,0,0" Padding="8">
                             <StackPanel>
                                 <CheckBox x:Name="CleanupHistoryCheck"
@@ -127,6 +127,8 @@
                             <StackPanel>
                                 <CheckBox x:Name="DetectRenamesCheck" Content="Nhan dien doi ten / di chuyen file (do theo noi dung)" Margin="0,2"/>
                                 <CheckBox x:Name="CompareChecksumsCheck" Content="So sanh noi dung bang hash SHA-256 (chac chan, cham hon)" Margin="0,2"/>
+                                <TextBlock Margin="20,0,0,4" TextWrapping="Wrap" Foreground="#B45309" FontSize="11"
+                                           Text="Tat: chi so kich thuoc + gio sua - file bi sua ma giu nguyen kich thuoc va gio se KHONG duoc phat hien; nhan dien doi ten cung bi tat."/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

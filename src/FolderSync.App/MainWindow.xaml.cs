@@ -133,18 +133,8 @@ public partial class MainWindow : Window
         detectRenames: o.DetectRenames,
         computeHashes: o.CompareChecksums,
         backupPropagateDeletes: o.PropagateDeletes,
-        timeTolerance: o.TimeTolerance);
-
-    private void PrepareJob(JobRecord job, JobOptions o)
-    {
-        if (!o.CreateFoldersIfMissing) return;
-        try
-        {
-            Directory.CreateDirectory(job.LeftRoot);
-            Directory.CreateDirectory(job.RightRoot);
-        }
-        catch (Exception ex) { Log("Khong tao duoc folder: " + ex.Message); }
-    }
+        timeTolerance: o.TimeTolerance,
+        createMissingRoots: o.CreateFoldersIfMissing);
 
     private void PostRunCleanup(JobRecord job, JobOptions o)
     {
@@ -396,7 +386,6 @@ public partial class MainWindow : Window
             var outcome = await Task.Run(() =>
             {
                 RunScript(o.ScriptPreAnalyze, job, "", null);
-                PrepareJob(job, o);
                 return session.AnalyzeOnly();
             });
             ShowActions(outcome.Actions);
@@ -431,12 +420,12 @@ public partial class MainWindow : Window
             var outcome = await Task.Run(() =>
             {
                 RunScript(o.ScriptPreAnalyze, job, "", null);
-                PrepareJob(job, o);
                 var oc = session.Run(progress);
                 RunScript(o.ScriptPostSync, job, oc.Result!.Aborted ? "aborted" : "", oc.Result);
                 return oc;
             });
             var r = outcome.Result!;
+            foreach (var err in outcome.ScanErrors) Log("Quet: " + err);
             if (r.Aborted)
             {
                 ShowActions(outcome.Actions);
@@ -584,12 +573,12 @@ public partial class MainWindow : Window
             var outcome = await Task.Run(() =>
             {
                 RunScript(o.ScriptPreAnalyze, job, "", null);
-                PrepareJob(job, o);
                 var oc = CreateSessionFor(job, o).Run(null);
                 RunScript(o.ScriptPostSync, job, oc.Result!.Aborted ? "aborted" : "", oc.Result);
                 return oc;
             });
             var r = outcome.Result!;
+            foreach (var err in outcome.ScanErrors) Log("Quet: " + err);
             if (r.Aborted)
                 Log($"[Tu dong] Job '{job.Name}' bi HUY boi chot an toan: {r.AbortReason}");
             else

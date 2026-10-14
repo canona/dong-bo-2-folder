@@ -55,9 +55,24 @@ public sealed class JobOptions
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOpts);
 
+    /// <summary>
+    /// Hanh vi cua Job tao TRUOC khi co Job Options: khong tu xoa history, khong copy
+    /// creation time/thuoc tinh. Mac dinh moi (CleanupHistory=true...) chi danh cho Job moi -
+    /// ap cho Job cu se am tham xoa vinh vien history qua 30 ngay ma nguoi dung khong he bat.
+    /// </summary>
+    public static JobOptions Legacy() => new()
+    {
+        CleanupHistory = false,
+        CopyCreationTime = false,
+        CopyAttributes = false
+    };
+
+    /// <summary>null/rong = Job moi (mac dinh moi). "{}" = gia tri mac dinh cua cot settings_json
+    /// sau migration, tuc Job cu chua tung luu Options -> Legacy().</summary>
     public static JobOptions FromJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return new JobOptions();
+        if (json.Trim() == "{}") return Legacy();
         try { return JsonSerializer.Deserialize<JobOptions>(json) ?? new JobOptions(); }
         catch (JsonException) { return new JobOptions(); }
     }

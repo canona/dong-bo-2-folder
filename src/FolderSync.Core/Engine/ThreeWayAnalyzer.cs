@@ -27,9 +27,10 @@ public sealed class ThreeWayAnalyzer
         return (current.MtimeUtc - baseline.MtimeUtc).Duration() > _timeTolerance;
     }
 
-    private static bool SameContent(FileEntry a, FileEntry b)
-        => a.Size == b.Size && a.Hash is not null && b.Hash is not null
-           && string.Equals(a.Hash, b.Hash, StringComparison.OrdinalIgnoreCase);
+    // Co hash 2 phia: so hash. Thieu hash (Job tat CompareChecksums): cung size + mtime trong dung sai
+    // moi coi la giong - nhat quan voi Changed(); neu khong 2 file giong het se thanh xung dot gia.
+    private bool SameContent(FileEntry a, FileEntry b)
+        => !Changed(a, b);
 
     public IReadOnlyList<SyncAction> Analyze(
         SyncMode mode,

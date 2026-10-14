@@ -71,8 +71,7 @@ public sealed class FolderScanner
                     continue;
                 }
                 // Thu muc bi loc (vd .git, .foldersync_history) thi khong di vao
-                var probe = Normalize(Path.GetRelativePath(root, sub)) + "/_probe";
-                if (_filter.IsIncluded(probe)) pending.Push(sub);
+                if (_filter.IsDirectoryIncluded(Normalize(Path.GetRelativePath(root, sub)))) pending.Push(sub);
             }
 
             foreach (var file in files)

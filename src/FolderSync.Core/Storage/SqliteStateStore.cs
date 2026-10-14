@@ -64,6 +64,11 @@ public sealed class SqliteStateStore : IDisposable
             using var alter = _conn.CreateCommand();
             alter.CommandText = "ALTER TABLE jobs ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'";
             alter.ExecuteNonQuery();
+            // Job da co truoc migration giu nguyen hanh vi cu (xem JobOptions.Legacy)
+            using var legacy = _conn.CreateCommand();
+            legacy.CommandText = "UPDATE jobs SET settings_json = $json";
+            legacy.Parameters.AddWithValue("$json", JobOptions.Legacy().ToJson());
+            legacy.ExecuteNonQuery();
         }
     }
 

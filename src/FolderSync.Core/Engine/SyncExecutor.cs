@@ -14,7 +14,11 @@ public sealed record SyncOptions(
     /// <summary>Chot an toan: so lenh xoa vuot nguong nay (theo % so file tham chieu - xem Execute) thi huy toan bo lan chay.</summary>
     double MaxDeletePercent = 50.0,
     int MaxDeleteAbsolute = 1000,
-    bool Force = false);
+    bool Force = false,
+    /// <summary>Tab Advanced cua Job Options: copy ca thoi gian tao file (creation time) sang dich.</summary>
+    bool CopyCreationTime = false,
+    /// <summary>Tab Advanced: copy thuoc tinh file (tru ReadOnly - tranh file dich bi khoa ghi de o lan sau).</summary>
+    bool CopyAttributes = false);
 
 public sealed class SyncResult
 {
@@ -190,6 +194,20 @@ public sealed class SyncExecutor
         File.Move(tmpFull, destFull, overwrite: true);
         // Giu nguyen mtime cua nguon - day la tin hieu phat hien thay doi o lan quet sau
         File.SetLastWriteTimeUtc(destFull, srcInfo.LastWriteTimeUtc);
+        if (_options.CopyCreationTime)
+        {
+            // Vai file system (USB cu, mang) khong cho dat creation time - bo qua, khong coi la loi copy
+            try { File.SetCreationTimeUtc(destFull, srcInfo.CreationTimeUtc); } catch (Exception) { }
+        }
+        if (_options.CopyAttributes)
+        {
+            try
+            {
+                var attrs = srcInfo.Attributes & ~FileAttributes.ReadOnly & ~FileAttributes.ReparsePoint;
+                File.SetAttributes(destFull, attrs);
+            }
+            catch (Exception) { /* thuoc tinh la phu - khong lam hong ket qua copy */ }
+        }
     }
 
     /// <returns>Noi file bi doi vao history, hoac null neu xoa vinh vien / file khong con.</returns>

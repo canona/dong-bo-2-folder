@@ -1,0 +1,168 @@
+<Window x:Class="FolderSync.App.JobOptionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Tuy chon Job - FolderSync" Height="580" Width="760"
+        Background="{StaticResource PageBgBrush}"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Danh sach tab ben trai kieu GoodSync -->
+            <ListBox x:Name="TabList" Grid.Column="0" SelectionChanged="TabList_SelectionChanged">
+                <ListBoxItem Content="Chung" IsSelected="True"/>
+                <ListBoxItem Content="Bo loc"/>
+                <ListBoxItem Content="Tu dong"/>
+                <ListBoxItem Content="Scripts"/>
+                <ListBoxItem Content="Nang cao"/>
+                <ListBoxItem Content="Phia Trai"/>
+                <ListBoxItem Content="Phia Phai"/>
+            </ListBox>
+
+            <Border Grid.Column="1" Background="White" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" Margin="10,0,0,0" Padding="14">
+                <Grid>
+                    <!-- ===== Tab Chung ===== -->
+                    <StackPanel x:Name="PanelGeneral">
+                        <TextBlock Text="Ten Job:"/>
+                        <TextBox x:Name="NameBox" Margin="0,4,0,10"/>
+                        <TextBlock Text="Folder Trai (nguon):"/>
+                        <DockPanel Margin="0,4,0,10">
+                            <Button DockPanel.Dock="Right" Content="Chon..." Margin="6,0,0,0" Click="BrowseLeft_Click"/>
+                            <TextBox x:Name="LeftBox"/>
+                        </DockPanel>
+                        <TextBlock Text="Folder Phai (dich):"/>
+                        <DockPanel Margin="0,4,0,12">
+                            <Button DockPanel.Dock="Right" Content="Chon..." Margin="6,0,0,0" Click="BrowseRight_Click"/>
+                            <TextBox x:Name="RightBox"/>
+                        </DockPanel>
+                        <DockPanel Margin="0,0,0,10">
+                            <TextBlock Text="Loai Job (Job Type):" Width="170" VerticalAlignment="Center"/>
+                            <ComboBox x:Name="ModeCombo"/>
+                        </DockPanel>
+                        <CheckBox x:Name="PropagateDeletesCheck" Margin="0,2"
+                                  Content="Lan truyen xoa (chi che do Backup: nguon xoa thi dich cung xoa)"/>
+                        <CheckBox x:Name="CreateFoldersCheck" Margin="0,2"
+                                  Content="Tao folder Trai/Phai neu chua ton tai khi chay Job"/>
+                        <GroupBox Header="Thu muc lich su (file bi xoa/ghi de)" Margin="0,10,0,0" Padding="8">
+                            <StackPanel>
+                                <CheckBox x:Name="CleanupHistoryCheck"
+                                          Content="Tu don .foldersync_history sau so ngay giu lai:"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBox x:Name="HistoryDaysBox" Width="60"/>
+                                    <TextBlock Text=" ngay" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+
+                    <!-- ===== Tab Bo loc ===== -->
+                    <StackPanel x:Name="PanelFilters" Visibility="Collapsed">
+                        <TextBlock TextWrapping="Wrap"
+                                   Text="Moi dong 1 mau, * va ? la ky tu dai dien. Mau khong co '/' khop theo ten file/thu muc; mau co '/' khop theo duong dan tuong doi. Vi du: *.tmp, cache, logs/*.log"/>
+                        <TextBlock Text="Chi lay (Include) - de trong = lay tat ca:" Margin="0,10,0,0"/>
+                        <TextBox x:Name="IncludeBox" Height="90" Margin="0,4,0,10" AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                        <TextBlock Text="Loai tru (Exclude) - de trong = khong loai, Exclude thang Include:"/>
+                        <TextBox x:Name="ExcludeBox" Height="90" Margin="0,4,0,10" AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                        <CheckBox x:Name="ExcludeHiddenCheck" Content="Loai file an (Hidden)" Margin="0,2"/>
+                        <CheckBox x:Name="ExcludeSystemCheck" Content="Loai file he thong (System)" Margin="0,2"/>
+                        <TextBlock Margin="0,10,0,0" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"
+                                   Text="Luu y: bo loc mac dinh cua app (file tam Office ~$, .git, .foldersync_history...) luon duoc ap dung, mau o day khong mo lai duoc cac muc do."/>
+                    </StackPanel>
+
+                    <!-- ===== Tab Tu dong ===== -->
+                    <StackPanel x:Name="PanelAuto" Visibility="Collapsed">
+                        <DockPanel Margin="0,0,0,12">
+                            <TextBlock Text="Tu giai quyet xung dot:" Width="190" VerticalAlignment="Center"/>
+                            <ComboBox x:Name="PolicyCombo"/>
+                        </DockPanel>
+                        <CheckBox x:Name="AutoOnStartCheck" Content="Chay Job nay khi mo FolderSync" Margin="0,2"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <CheckBox x:Name="AutoOnFileChangeCheck" Content="Chay khi file thay doi, tre " VerticalAlignment="Center"/>
+                            <TextBox x:Name="FileChangeDelayBox" Width="50"/>
+                            <TextBlock Text=" giay" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="Chay dinh ky moi " VerticalAlignment="Center"/>
+                            <TextBox x:Name="PeriodBox" Width="50"/>
+                            <TextBlock Text=" phut (0 = tat)" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBlock Text="Chot an toan: huy lan chay neu so lenh xoa vuot " VerticalAlignment="Center"/>
+                            <TextBox x:Name="SafetyBox" Width="50"/>
+                            <TextBlock Text=" % so file" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Margin="0,10,0,0" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"
+                                   Text="Tu dong chay chi hoat dong khi FolderSync dang mo. Xung dot theo chinh sach o tren; neu chon 'Hoi thu cong' thi lan chay tu dong se bo qua cac file xung dot."/>
+                    </StackPanel>
+
+                    <!-- ===== Tab Scripts ===== -->
+                    <StackPanel x:Name="PanelScripts" Visibility="Collapsed">
+                        <TextBlock Text="Lenh chay truoc khi phan tich / dong bo:"/>
+                        <TextBox x:Name="PreScriptBox" Margin="0,4,0,10"/>
+                        <TextBlock Text="Lenh chay sau khi dong bo xong:"/>
+                        <TextBox x:Name="PostScriptBox" Margin="0,4,0,10"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
+                                   Text="Lenh duoc chay qua cmd.exe. Cac bien dung duoc trong lenh: %JOBNAME% ten Job, %RESULT% ket qua (rong = ok), %CHANGED% so file da thay doi, %ERRORS% so loi, %CONFLICTS% so xung dot, %LF% folder Trai, %RF% folder Phai. Vi du: echo %JOBNAME% xong &gt;&gt; C:\log.txt"/>
+                    </StackPanel>
+
+                    <!-- ===== Tab Nang cao ===== -->
+                    <StackPanel x:Name="PanelAdvanced" Visibility="Collapsed">
+                        <GroupBox Header="Khi copy" Padding="8">
+                            <StackPanel>
+                                <CheckBox x:Name="CopyCreationTimeCheck" Content="Copy ca thoi gian tao file (creation time)" Margin="0,2"/>
+                                <CheckBox x:Name="CopyAttributesCheck" Content="Copy thuoc tinh file (attributes)" Margin="0,2"/>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Khi phan tich" Padding="8" Margin="0,10,0,0">
+                            <StackPanel>
+                                <CheckBox x:Name="DetectRenamesCheck" Content="Nhan dien doi ten / di chuyen file (do theo noi dung)" Margin="0,2"/>
+                                <CheckBox x:Name="CompareChecksumsCheck" Content="So sanh noi dung bang hash SHA-256 (chac chan, cham hon)" Margin="0,2"/>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+
+                    <!-- ===== Tab Phia Trai ===== -->
+                    <StackPanel x:Name="PanelLeft" Visibility="Collapsed">
+                        <TextBlock Text="Cach nhan biet file khac nhau:" FontWeight="SemiBold"/>
+                        <TextBlock Text="(x) So sanh kich thuoc + thoi gian sua, kem hash neu bat o tab Nang cao" Margin="0,4,0,10"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Dung sai thoi gian: " VerticalAlignment="Center"/>
+                            <TextBox x:Name="LeftToleranceBox" Width="50"/>
+                            <TextBlock Text=" giay (tang len 2-5 giay khi folder nam tren USB FAT32)" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock x:Name="LeftFsText" Margin="0,14,0,0" Foreground="{StaticResource MutedTextBrush}"/>
+                    </StackPanel>
+
+                    <!-- ===== Tab Phia Phai ===== -->
+                    <StackPanel x:Name="PanelRight" Visibility="Collapsed">
+                        <TextBlock Text="Cach nhan biet file khac nhau:" FontWeight="SemiBold"/>
+                        <TextBlock Text="(x) So sanh kich thuoc + thoi gian sua, kem hash neu bat o tab Nang cao" Margin="0,4,0,10"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Dung sai thoi gian: " VerticalAlignment="Center"/>
+                            <TextBox x:Name="RightToleranceBox" Width="50"/>
+                            <TextBlock Text=" giay (tang len 2-5 giay khi folder nam tren USB FAT32)" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock x:Name="RightFsText" Margin="0,14,0,0" Foreground="{StaticResource MutedTextBrush}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <TextBlock x:Name="ValidationText" Foreground="{StaticResource DangerBrush}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            <Button Content="Luu" Width="90" Padding="10,6" Margin="0,0,8,0" Click="Save_Click"
+                    Background="{StaticResource GreenFolderBrush}" Foreground="White" FontWeight="Bold"/>
+            <Button Content="Huy" Width="90" Padding="10,6" Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

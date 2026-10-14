@@ -1,0 +1,54 @@
+<Window x:Class="FolderSync.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FolderSync - Dong bo 2 folder" Height="640" Width="1020"
+        Loaded="Window_Loaded">
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Cot trai: danh sach Job -->
+        <DockPanel Grid.Column="0" Margin="0,0,10,0">
+            <TextBlock DockPanel.Dock="Top" FontSize="15" FontWeight="SemiBold" Text="Job dong bo"/>
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                <Button Content="Them" Padding="10,5" Margin="0,0,6,0" Click="AddJob_Click"/>
+                <Button Content="Sua" Padding="10,5" Margin="0,0,6,0" Click="EditJob_Click"/>
+                <Button Content="Xoa" Padding="10,5" Click="DeleteJob_Click"/>
+            </StackPanel>
+            <ListBox x:Name="JobList" Margin="0,8,0,0" DisplayMemberPath="Name"
+                     SelectionChanged="JobList_SelectionChanged"/>
+        </DockPanel>
+
+        <!-- Cot phai: thong tin Job + bang Analyze + log -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="110"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" x:Name="JobInfoText" TextWrapping="Wrap"
+                       Text="Chon hoac them mot Job de bat dau."/>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,8">
+                <Button x:Name="AnalyzeButton" Content="Phan tich (Analyze)" Padding="14,6" Margin="0,0,8,0" Click="Analyze_Click"/>
+                <Button x:Name="SyncButton" Content="Dong bo (Sync)" Padding="14,6" Margin="0,0,8,0" Click="Sync_Click"/>
+                <Button x:Name="HistoryButton" Content="Lich su / Khoi phuc" Padding="14,6" Click="History_Click"/>
+            </StackPanel>
+            <DataGrid Grid.Row="2" x:Name="ActionGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                      CanUserAddRows="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Hanh dong" Binding="{Binding Loai}" Width="150"/>
+                    <DataGridTextColumn Header="Duong dan" Binding="{Binding DuongDan}" Width="*"/>
+                    <DataGridTextColumn Header="Dich (neu doi ten)" Binding="{Binding Dich}" Width="180"/>
+                    <DataGridTextColumn Header="Ly do" Binding="{Binding LyDo}" Width="220"/>
+                </DataGrid.Columns>
+            </DataGrid>
+            <ListBox Grid.Row="3" x:Name="LogList" Margin="0,8,0,0"/>
+            <TextBlock Grid.Row="4" x:Name="StatusText" Margin="0,6,0,0" Text="San sang."/>
+        </Grid>
+    </Grid>
+</Window>

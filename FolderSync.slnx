@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FolderSync.App/FolderSync.App.csproj" />
+    <Project Path="src/FolderSync.Core/FolderSync.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FolderSync.Core.Harness/FolderSync.Core.Harness.csproj" />
+  </Folder>
+</Solution>

@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.IO;
 using System.Windows;
 using FolderSync.Core.Engine;
@@ -12,7 +14,41 @@ public partial class MainWindow : Window
     private readonly SqliteStateStore _store;
     private readonly ObservableCollection<JobRecord> _jobs = new();
 
-    public sealed record ActionRow(string Loai, string DuongDan, string Dich, string LyDo);
+    /// <summary>1 dong trong bang hanh dong - cap nhat truc tiep trong luc dong bo.</summary>
+    public sealed class ActionRow : INotifyPropertyChanged
+    {
+        private string _trangThai = "";
+        private string _dich;
+        private string _thoiGian = "";
+        private string _lyDo;
+
+        public ActionRow(string loai, string duongDan, string dich, string lyDo)
+        {
+            Loai = loai;
+            DuongDan = duongDan;
+            _dich = dich;
+            _lyDo = lyDo;
+        }
+
+        public string Loai { get; }
+        public string DuongDan { get; }
+        public string TrangThai { get => _trangThai; set => Set(ref _trangThai, value); }
+        public string Dich { get => _dich; set => Set(ref _dich, value); }
+        public string ThoiGian { get => _thoiGian; set => Set(ref _thoiGian, value); }
+        public string LyDo { get => _lyDo; set => Set(ref _lyDo, value); }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void Set(ref string field, string value, [CallerMemberName] string? name = null)
+        {
+            if (field == value) return;
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+    }
+
+    private List<ActionRow> _rows = new();
+    private int _progressDone, _progressTotal;
 
     public MainWindow()
     {
@@ -72,9 +108,53 @@ public partial class MainWindow : Window
 
     private void ShowActions(IEnumerable<SyncAction> actions)
     {
-        ActionGrid.ItemsSource = actions
+        _rows = actions
             .Select(a => new ActionRow(KindName(a.Kind), a.RelativePath, a.TargetPath ?? "", a.Reason))
             .ToList();
+        ActionGrid.ItemsSource = _rows;
+    }
+
+    private static bool IsWork(SyncAction a) => a.Kind is not (SyncActionKind.Skip or SyncActionKind.Conflict);
+
+    // Chay tren UI thread (Progress<T> tu chuyen ve SynchronizationContext cua cua so)
+    private void OnSyncProgress(SyncProgress p)
+    {
+        switch (p.Stage)
+        {
+            case SyncProgressStage.Planned:
+                ShowActions(p.Plan!);
+                foreach (var (planRow, action) in _rows.Zip(p.Plan!))
+                    planRow.TrangThai = IsWork(action) ? "Cho" : "";
+                _progressDone = 0;
+                _progressTotal = p.Plan!.Count(IsWork);
+                SyncProgressBar.Maximum = Math.Max(1, _progressTotal);
+                SyncProgressBar.Value = 0;
+                ProgressText.Text = $"0 / {_progressTotal}";
+                ProgressPanel.Visibility = Visibility.Visible;
+                break;
+
+            case SyncProgressStage.Started:
+                var running = _rows[p.Index];
+                running.TrangThai = "Dang chay...";
+                ActionGrid.ScrollIntoView(running);
+                StatusText.Text = $"{KindName(p.Action!.Kind)}: {p.Action.RelativePath}";
+                break;
+
+            case SyncProgressStage.Completed:
+            case SyncProgressStage.Failed:
+                var row = _rows[p.Index];
+                bool ok = p.Stage == SyncProgressStage.Completed;
+                row.TrangThai = ok ? "Xong" : "LOI";
+                row.ThoiGian = p.TimeLocal.ToString("dd/MM/yyyy HH:mm:ss");
+                if (p.Destination is not null) row.Dich = p.Destination;
+                else if (ok && p.Action!.Kind is SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight)
+                    row.Dich = "(da xoa)";
+                if (!ok) row.LyDo = p.Error ?? row.LyDo;
+                _progressDone++;
+                SyncProgressBar.Value = _progressDone;
+                ProgressText.Text = $"{_progressDone} / {_progressTotal}";
+                break;
+        }
     }
 
     private void Log(string message) => LogList.Items.Insert(0, $"[{DateTime.Now:HH:mm:ss}] {message}");
@@ -110,11 +190,13 @@ public partial class MainWindow : Window
         SetBusy(true, "Dang dong bo...");
         try
         {
-            var outcome = await Task.Run(session.Run);
-            ShowActions(outcome.Actions);
+            ProgressPanel.Visibility = Visibility.Collapsed;
+            var progress = new Progress<SyncProgress>(OnSyncProgress);
+            var outcome = await Task.Run(() => session.Run(progress));
             var r = outcome.Result!;
             if (r.Aborted)
             {
+                ShowActions(outcome.Actions); // Huy truoc khi chay - hien danh sach du dinh de nguoi dung xem
                 Log("DA HUY BOI CHOT AN TOAN: " + r.AbortReason);
                 SetBusy(false, "Da huy toan bo vi chot an toan - chua dong vao file nao.");
             }

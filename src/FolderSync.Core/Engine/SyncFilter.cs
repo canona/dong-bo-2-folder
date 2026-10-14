@@ -9,6 +9,7 @@ public sealed class SyncFilter
     public bool IsIncluded(string relativePath)
     {
         var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return false;
         foreach (var part in parts[..^1])
             if (DefaultExcludedDirs.Contains(part, StringComparer.OrdinalIgnoreCase)) return false;
         var name = parts[^1];

@@ -1,7 +1,7 @@
 <Window x:Class="FolderSync.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="FolderSync - Dong bo 2 folder" Height="640" Width="1020"
+        Title="FolderSync - Dong bo 2 folder" Height="680" Width="1200"
         Loaded="Window_Loaded">
     <Grid Margin="10">
         <Grid.ColumnDefinitions>
@@ -41,14 +41,27 @@
             <DataGrid Grid.Row="2" x:Name="ActionGrid" AutoGenerateColumns="False" IsReadOnly="True"
                       CanUserAddRows="False">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Hanh dong" Binding="{Binding Loai}" Width="150"/>
+                    <DataGridTextColumn Header="Hanh dong" Binding="{Binding Loai}" Width="130"/>
+                    <DataGridTextColumn Header="Trang thai" Binding="{Binding TrangThai}" Width="90"/>
                     <DataGridTextColumn Header="Duong dan" Binding="{Binding DuongDan}" Width="*"/>
-                    <DataGridTextColumn Header="Dich (neu doi ten)" Binding="{Binding Dich}" Width="180"/>
-                    <DataGridTextColumn Header="Ly do" Binding="{Binding LyDo}" Width="220"/>
+                    <DataGridTextColumn Header="Dich" Binding="{Binding Dich}" Width="*"/>
+                    <DataGridTextColumn Header="Thoi gian" Binding="{Binding ThoiGian}" Width="135"/>
+                    <DataGridTextColumn Header="Ly do" Binding="{Binding LyDo}" Width="150"/>
                 </DataGrid.Columns>
             </DataGrid>
             <ListBox Grid.Row="3" x:Name="LogList" Margin="0,8,0,0"/>
-            <TextBlock Grid.Row="4" x:Name="StatusText" Margin="0,6,0,0" Text="San sang."/>
+            <Grid Grid.Row="4" Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="260"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="StatusText" Text="San sang." TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center"/>
+                <Grid Grid.Column="1" x:Name="ProgressPanel" Visibility="Collapsed">
+                    <ProgressBar x:Name="SyncProgressBar" Height="18" Minimum="0"/>
+                    <TextBlock x:Name="ProgressText" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

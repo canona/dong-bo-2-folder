@@ -60,6 +60,8 @@ var p1 = P1Tests.Run();
 pass += p1.pass; fail += p1.fail;
 var p2 = P2Tests.Run();
 pass += p2.pass; fail += p2.fail;
+var safe = SafetyTests.Run();
+pass += safe.pass; fail += safe.fail;
 
 Console.WriteLine($"\nTONG: {pass} PASS, {fail} FAIL");
 return fail == 0 ? 0 : 1;

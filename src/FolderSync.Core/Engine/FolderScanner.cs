@@ -5,14 +5,19 @@ namespace FolderSync.Core.Engine;
 public sealed record ScanResult(
     IReadOnlyDictionary<string, FileEntry> Entries,
     IReadOnlyList<string> Errors,
-    int SkippedLinks);
+    int SkippedLinks,
+    /// <summary>Duong dan tuong doi (file hoac thu muc) khong doc duoc - noi dung ben duoi KHONG duoc biet.</summary>
+    IReadOnlyList<string> FailedPaths,
+    /// <summary>Thu muc goc khong ton tai (USB chua cam, sai duong dan...).</summary>
+    bool RootMissing = false);
 
 /// <summary>
 /// Quet cay thu muc thanh danh sach FileEntry theo duong dan tuong doi (chuan hoa '/').
 /// Nguyen tac (Ke hoach muc 2.1):
 /// - Ton trong SyncFilter (file tam Office, .git, history cua chinh app...).
 /// - KHONG di theo symlink/junction (tranh vong lap vo han) - dem vao SkippedLinks.
-/// - Loi truy cap 1 file/thu muc khong lam sap ca lan quet - ghi vao Errors.
+/// - Loi truy cap 1 file/thu muc khong lam sap ca lan quet - ghi vao Errors va FailedPaths
+///   (SyncSession dung FailedPaths de KHONG coi file khong doc duoc la "da xoa").
 /// - File bi xoa giua luc quet (race) cung chi ghi loi, khong crash.
 /// </summary>
 public sealed class FolderScanner
@@ -25,12 +30,13 @@ public sealed class FolderScanner
     {
         var entries = new Dictionary<string, FileEntry>(StringComparer.OrdinalIgnoreCase);
         var errors = new List<string>();
+        var failed = new List<string>();
         int skippedLinks = 0;
 
         if (!Directory.Exists(root))
         {
             errors.Add($"Thu muc khong ton tai: {root}");
-            return new ScanResult(entries, errors, 0);
+            return new ScanResult(entries, errors, 0, failed, RootMissing: true);
         }
 
         var pending = new Stack<string>();
@@ -48,6 +54,7 @@ public sealed class FolderScanner
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
                 errors.Add($"Khong doc duoc thu muc {dir}: {ex.Message}");
+                failed.Add(Normalize(Path.GetRelativePath(root, dir)));
                 continue;
             }
 
@@ -60,6 +67,7 @@ public sealed class FolderScanner
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     errors.Add($"Khong kiem tra duoc {sub}: {ex.Message}");
+                    failed.Add(Normalize(Path.GetRelativePath(root, sub)));
                     continue;
                 }
                 // Thu muc bi loc (vd .git, .foldersync_history) thi khong di vao
@@ -81,11 +89,12 @@ public sealed class FolderScanner
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     errors.Add($"Bo qua {rel}: {ex.Message}");
+                    failed.Add(rel);
                 }
             }
         }
 
-        return new ScanResult(entries, errors, skippedLinks);
+        return new ScanResult(entries, errors, skippedLinks, failed);
     }
 
     internal static string Normalize(string relativePath)

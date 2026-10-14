@@ -46,4 +46,12 @@ docs/
   - **WPF UI đầy đủ:** danh sách Job + Thêm/Sửa/Xoá (hộp thoại chọn folder, chọn chế độ và chính sách xung đột), nút Phân tích (bảng hành động xem trước, không đụng file), nút Đồng bộ có xác nhận, log theo thời gian, cửa sổ Lịch sử/Khôi phục theo từng phía. State: bản cài đặt ở `%AppData%\FolderSync\state.db`, bản portable (có `portable.flag` cạnh .exe) ở ngay thư mục app.
   - **Đóng gói** trong `packaging/`: `build-release.ps1` (publish self-contained single-file win-x64 → bản portable + zip + đầu vào installer) và `FolderSync.iss` (Inno Setup 6). Script chạy trên máy Windows của người dùng — chưa kiểm chứng thực tế trên Windows trong môi trường này.
   - Kiểm chứng: build toàn solution **0 errors / 0 warnings**, harness **48/48 PASS** (20 P0 + 15 P1 + 13 P2).
+- Bản vá an toàn + tiến trình (14/10/2026):
+  - **Quét lỗi không còn bị coi là "đã xóa":** `FolderScanner` trả `FailedPaths` / `RootMissing`. `SyncSession` hủy toàn bộ khi thư mục gốc không tồn tại mà có lệnh xóa/đổi tên (kể cả `Force`); mọi hành động chạm đường dẫn không đọc được (file bị khóa, thiếu quyền) chuyển thành Skip và giữ nguyên state cũ của chúng. Trước đó Mirror lần đầu với Trái không tồn tại sẽ xóa sạch Phải.
+  - **Chốt % lần chạy đầu:** chưa có state thì lấy tổng số file 2 phía làm mốc (trước đây chốt % bị bỏ qua).
+  - **Đổi tên chỉ khác hoa/thường** được đồng bộ (chỉ phần tên file, không đổi hoa/thường thư mục).
+  - `RenameDetector` chỉ ghép Move khi file phía đích còn đúng nội dung trong state; `SyncFilter.IsIncluded("")` không còn ném lỗi.
+  - **Tiến trình đồng bộ:** `SyncSession.Run(IProgress<SyncProgress>)` báo Planned/Started/Completed/Failed kèm đường dẫn đích thật và thời gian; UI có thanh tiến trình, cột Trạng thái / Đích / Thời gian.
+  - Kiểm chứng: harness **66/66 PASS** (thêm `SafetyTests.cs`: 13/16 ca an toàn FAIL trên code cũ, PASS trên code mới).
+  - Lưu ý môi trường: máy chỉ có .NET SDK 8 không mở được `FolderSync.slnx` (cần SDK ≥ 9.0.200) — build/chạy từng `.csproj`.
 - Việc còn lại để dùng thật hằng ngày (P3): chạy thử trên máy Windows thật với 2 folder thật + 1 USB thật trong 1-2 tuần; real-time watcher + hẹn lịch; tối ưu hash BLAKE3 và quét USN Journal cho folder lớn.

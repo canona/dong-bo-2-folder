@@ -45,15 +45,44 @@ public sealed class ThreeWayAnalyzer
             left.TryGetValue(path, out var l);
             right.TryGetValue(path, out var r);
 
-            actions.Add(mode switch
+            var action = mode switch
             {
                 SyncMode.TwoWay => DecideTwoWay(path, s, l, r),
                 SyncMode.MirrorOneWay => DecideMirror(path, s, l, r),
                 _ => DecideBackup(path, s, l, r)
-            });
+            };
+            actions.Add(action.Kind == SyncActionKind.Skip ? DecideCaseRename(mode, action, s, l, r) : action);
         }
         return actions;
     }
+
+    /// <summary>
+    /// Windows khong phan biet hoa/thuong nen "baocao.txt" -> "BaoCao.txt" lot qua so sanh theo khoa.
+    /// Chi dong bo phan TEN FILE (thu muc giu nguyen) de lenh Move luon hoi tu, khong lap moi lan chay.
+    /// 1 chieu: Phai theo Trai. 2 chieu: phia nao khac ten trong state la phia vua doi ten.
+    /// </summary>
+    private static SyncAction DecideCaseRename(SyncMode mode, SyncAction skip, FileEntry? s, FileEntry? l, FileEntry? r)
+    {
+        if (l is null || r is null) return skip;
+        var lName = FileName(l.RelativePath);
+        var rName = FileName(r.RelativePath);
+        if (string.Equals(lName, rName, StringComparison.Ordinal)) return skip;
+
+        if (mode != SyncMode.TwoWay)
+            return new(SyncActionKind.MoveRight, r.RelativePath, "Doi ten hoa/thuong theo nguon", WithName(r.RelativePath, lName));
+
+        if (s is null) return skip; // Khong co moc de biet phia nao doi ten
+        var sName = FileName(s.RelativePath);
+        if (string.Equals(rName, sName, StringComparison.Ordinal))
+            return new(SyncActionKind.MoveRight, r.RelativePath, "Doi ten hoa/thuong o Trai", WithName(r.RelativePath, lName));
+        if (string.Equals(lName, sName, StringComparison.Ordinal))
+            return new(SyncActionKind.MoveLeft, l.RelativePath, "Doi ten hoa/thuong o Phai", WithName(l.RelativePath, rName));
+        return skip; // Ca hai phia deu doi ten khac nhau - de nguyen
+    }
+
+    private static string FileName(string rel) => rel[(rel.LastIndexOf('/') + 1)..];
+
+    private static string WithName(string rel, string name) => rel[..(rel.LastIndexOf('/') + 1)] + name;
 
     private SyncAction DecideTwoWay(string path, FileEntry? s, FileEntry? l, FileEntry? r)
     {

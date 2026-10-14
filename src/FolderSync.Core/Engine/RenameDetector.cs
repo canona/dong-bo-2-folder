@@ -22,12 +22,12 @@ public static class RenameDetector
         // File bi doi ten o Trai: DeleteRight(A) + CopyLeftToRight(B), left[B] == state[A]
         TryPair(result,
             deleteKind: SyncActionKind.DeleteRight, copyKind: SyncActionKind.CopyLeftToRight,
-            moveKind: SyncActionKind.MoveRight, sourceScan: left, state);
+            moveKind: SyncActionKind.MoveRight, sourceScan: left, targetScan: right, state);
 
         // File bi doi ten o Phai: DeleteLeft(A) + CopyRightToLeft(B), right[B] == state[A]
         TryPair(result,
             deleteKind: SyncActionKind.DeleteLeft, copyKind: SyncActionKind.CopyRightToLeft,
-            moveKind: SyncActionKind.MoveLeft, sourceScan: right, state);
+            moveKind: SyncActionKind.MoveLeft, sourceScan: right, targetScan: left, state);
 
         return result;
     }
@@ -36,6 +36,7 @@ public static class RenameDetector
         List<SyncAction> actions,
         SyncActionKind deleteKind, SyncActionKind copyKind, SyncActionKind moveKind,
         IReadOnlyDictionary<string, FileEntry> sourceScan,
+        IReadOnlyDictionary<string, FileEntry> targetScan,
         IReadOnlyDictionary<string, FileEntry> state)
     {
         var deletes = actions.Where(a => a.Kind == deleteKind).ToList();
@@ -44,6 +45,10 @@ public static class RenameDetector
         foreach (var del in deletes)
         {
             if (!state.TryGetValue(del.RelativePath, out var oldEntry)) continue;
+            // File se bi doi ten o phia dich phai con dung noi dung trong state (Mirror khong kiem
+            // dieu nay khi sinh DeleteRight) - neu da bi sua thi Move se mang noi dung sai sang ten moi.
+            if (!targetScan.TryGetValue(del.RelativePath, out var targetEntry)
+                || !SameIdentity(oldEntry, targetEntry)) continue;
 
             var candidates = copies.Where(c =>
                 sourceScan.TryGetValue(c.RelativePath, out var newEntry)

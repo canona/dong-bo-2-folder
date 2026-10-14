@@ -62,6 +62,8 @@ var p2 = P2Tests.Run();
 pass += p2.pass; fail += p2.fail;
 var safe = SafetyTests.Run();
 pass += safe.pass; fail += safe.fail;
+var opt = OptionsTests.Run();
+pass += opt.pass; fail += opt.fail;
 
 Console.WriteLine($"\nTONG: {pass} PASS, {fail} FAIL");
 return fail == 0 ? 0 : 1;

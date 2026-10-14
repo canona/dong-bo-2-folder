@@ -83,6 +83,8 @@ public sealed class FolderScanner
                 {
                     var info = new FileInfo(file);
                     if ((info.Attributes & FileAttributes.ReparsePoint) != 0) { skippedLinks++; continue; }
+                    if (_filter.ExcludeHidden && (info.Attributes & FileAttributes.Hidden) != 0) continue;
+                    if (_filter.ExcludeSystem && (info.Attributes & FileAttributes.System) != 0) continue;
                     string? hash = computeHashes ? FileHasher.ComputeHash(file) : null;
                     entries[rel] = new FileEntry(rel, info.Length, info.LastWriteTimeUtc, hash);
                 }

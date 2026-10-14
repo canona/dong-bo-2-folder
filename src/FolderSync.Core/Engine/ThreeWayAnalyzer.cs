@@ -11,9 +11,13 @@ namespace FolderSync.Core.Engine;
 public sealed class ThreeWayAnalyzer
 {
     private readonly TimeSpan _timeTolerance;
+    private readonly bool _backupPropagateDeletes;
 
-    public ThreeWayAnalyzer(TimeSpan? timeTolerance = null)
-        => _timeTolerance = timeTolerance ?? TimeSpan.FromSeconds(2);
+    public ThreeWayAnalyzer(TimeSpan? timeTolerance = null, bool backupPropagateDeletes = false)
+    {
+        _timeTolerance = timeTolerance ?? TimeSpan.FromSeconds(2);
+        _backupPropagateDeletes = backupPropagateDeletes;
+    }
 
     private bool Changed(FileEntry current, FileEntry baseline)
     {
@@ -138,7 +142,14 @@ public sealed class ThreeWayAnalyzer
 
     private SyncAction DecideBackup(string path, FileEntry? s, FileEntry? l, FileEntry? r)
     {
-        if (l is null) return new(SyncActionKind.Skip, path, "Backup: nguon da xoa, giu nguyen o dich");
+        if (l is null)
+        {
+            // Chi lan truyen xoa khi Job bat PropagateDeletes VA file tung co trong state
+            // (tuc la truoc day da tung dong bo) - file la xuat hien san o dich thi khong dung vao.
+            if (_backupPropagateDeletes && s is not null && r is not null)
+                return new(SyncActionKind.DeleteRight, path, "Backup co lan truyen xoa: nguon da xoa");
+            return new(SyncActionKind.Skip, path, "Backup: nguon da xoa, giu nguyen o dich");
+        }
         if (r is null) return new(SyncActionKind.CopyLeftToRight, path, "Thieu o dich");
         return ChangedAgainst(l, r) ? new(SyncActionKind.CopyLeftToRight, path, "Nguon moi hon/khac dich")
                                     : new(SyncActionKind.Skip, path, "Da co o dich");

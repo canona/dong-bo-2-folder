@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 namespace FolderSync.Core.Storage;
 
 public sealed record JobRecord(string Id, string Name, string LeftRoot, string RightRoot,
-    SyncMode Mode, ConflictPolicy Policy);
+    SyncMode Mode, ConflictPolicy Policy, string SettingsJson = "{}");
 
 /// <summary>
 /// Kho trang thai dong bo trong 1 file SQLite duy nhat (Ke hoach muc 3, 10):
@@ -55,19 +55,30 @@ public sealed class SqliteStateStore : IDisposable
             );
             """;
         cmd.ExecuteNonQuery();
+
+        // Migration: DB cua ban cu chua co cot settings_json (Job Options dang JSON)
+        using var check = _conn.CreateCommand();
+        check.CommandText = "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name = 'settings_json'";
+        if (Convert.ToInt64(check.ExecuteScalar()) == 0)
+        {
+            using var alter = _conn.CreateCommand();
+            alter.CommandText = "ALTER TABLE jobs ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'";
+            alter.ExecuteNonQuery();
+        }
     }
 
     public IReadOnlyList<JobRecord> ListJobs()
     {
         using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT id, name, left_root, right_root, mode, conflict_policy FROM jobs ORDER BY name";
+        cmd.CommandText = "SELECT id, name, left_root, right_root, mode, conflict_policy, settings_json FROM jobs ORDER BY name";
         var result = new List<JobRecord>();
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
             result.Add(new JobRecord(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-                (SyncMode)reader.GetInt32(4), (ConflictPolicy)reader.GetInt32(5)));
+                (SyncMode)reader.GetInt32(4), (ConflictPolicy)reader.GetInt32(5),
+                reader.IsDBNull(6) ? "{}" : reader.GetString(6)));
         }
         return result;
     }
@@ -89,14 +100,15 @@ public sealed class SqliteStateStore : IDisposable
         tx.Commit();
     }
 
-    public void UpsertJob(string id, string name, string leftRoot, string rightRoot, SyncMode mode, ConflictPolicy policy)
+    public void UpsertJob(string id, string name, string leftRoot, string rightRoot, SyncMode mode,
+        ConflictPolicy policy, string settingsJson = "{}")
     {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO jobs (id, name, left_root, right_root, mode, conflict_policy)
-            VALUES ($id, $name, $l, $r, $mode, $policy)
+            INSERT INTO jobs (id, name, left_root, right_root, mode, conflict_policy, settings_json)
+            VALUES ($id, $name, $l, $r, $mode, $policy, $settings)
             ON CONFLICT(id) DO UPDATE SET name=$name, left_root=$l, right_root=$r,
-                mode=$mode, conflict_policy=$policy;
+                mode=$mode, conflict_policy=$policy, settings_json=$settings;
             """;
         cmd.Parameters.AddWithValue("$id", id);
         cmd.Parameters.AddWithValue("$name", name);
@@ -104,6 +116,7 @@ public sealed class SqliteStateStore : IDisposable
         cmd.Parameters.AddWithValue("$r", rightRoot);
         cmd.Parameters.AddWithValue("$mode", (int)mode);
         cmd.Parameters.AddWithValue("$policy", (int)policy);
+        cmd.Parameters.AddWithValue("$settings", settingsJson);
         cmd.ExecuteNonQuery();
     }
 

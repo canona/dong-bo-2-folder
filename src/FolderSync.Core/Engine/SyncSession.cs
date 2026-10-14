@@ -26,14 +26,22 @@ public sealed class SyncSession
     private readonly ConflictPolicy _policy;
     private readonly SqliteStateStore _store;
     private readonly SyncOptions _options;
-    private readonly FolderScanner _scanner = new();
-    private readonly ThreeWayAnalyzer _analyzer = new();
+    private readonly FolderScanner _scanner;
+    private readonly ThreeWayAnalyzer _analyzer;
+    private readonly bool _detectRenames;
+    private readonly bool _computeHashes;
 
     // Mac dinh cua engine la Manual (an toan nhat): xung dot chi duoc tu dong giai quyet
     // khi Job khai bao ro chinh sach tu dong. UI dat mac dinh NewerWins khi tao Job moi.
+    // Cac tham so con lai den tu JobOptions (tab Filters/Advanced/Left/Right Side cua Job).
     public SyncSession(string jobId, string leftRoot, string rightRoot, SyncMode mode,
         SqliteStateStore store, SyncOptions? options = null,
-        ConflictPolicy policy = ConflictPolicy.Manual)
+        ConflictPolicy policy = ConflictPolicy.Manual,
+        SyncFilter? filter = null,
+        bool detectRenames = true,
+        bool computeHashes = true,
+        bool backupPropagateDeletes = false,
+        TimeSpan? timeTolerance = null)
     {
         _jobId = jobId;
         _leftRoot = leftRoot;
@@ -42,6 +50,10 @@ public sealed class SyncSession
         _store = store;
         _options = options ?? new SyncOptions();
         _policy = policy;
+        _scanner = new FolderScanner(filter);
+        _analyzer = new ThreeWayAnalyzer(timeTolerance, backupPropagateDeletes);
+        _detectRenames = detectRenames;
+        _computeHashes = computeHashes;
     }
 
     private sealed record AnalysisContext(
@@ -56,12 +68,13 @@ public sealed class SyncSession
 
     private AnalysisContext Analyze()
     {
-        var leftScan = _scanner.Scan(_leftRoot, computeHashes: true);
-        var rightScan = _scanner.Scan(_rightRoot, computeHashes: true);
+        var leftScan = _scanner.Scan(_leftRoot, computeHashes: _computeHashes);
+        var rightScan = _scanner.Scan(_rightRoot, computeHashes: _computeHashes);
         var state = _store.LoadState(_jobId);
 
         var actions = _analyzer.Analyze(_mode, state, leftScan.Entries, rightScan.Entries);
-        actions = RenameDetector.Apply(actions, state, leftScan.Entries, rightScan.Entries);
+        if (_detectRenames)
+            actions = RenameDetector.Apply(actions, state, leftScan.Entries, rightScan.Entries);
         actions = ConflictResolver.Resolve(actions, _policy, state, leftScan.Entries, rightScan.Entries);
         // File/thu muc khong doc duoc luc quet trong nhu "da xoa" - khong duoc phep ra quyet dinh tren chung
         actions = SkipUnreadable(actions, leftScan.FailedPaths.Concat(rightScan.FailedPaths).ToList());
@@ -113,8 +126,8 @@ public sealed class SyncSession
 
         if (!result.Aborted)
         {
-            var leftAfter = _scanner.Scan(_leftRoot, computeHashes: true);
-            var rightAfter = _scanner.Scan(_rightRoot, computeHashes: true);
+            var leftAfter = _scanner.Scan(_leftRoot, computeHashes: _computeHashes);
+            var rightAfter = _scanner.Scan(_rightRoot, computeHashes: _computeHashes);
             var newState = ComputeSyncedState(leftAfter.Entries, rightAfter.Entries);
             var unreadable = ctx.Left.FailedPaths.Concat(ctx.Right.FailedPaths)
                 .Concat(leftAfter.FailedPaths).Concat(rightAfter.FailedPaths).ToList();

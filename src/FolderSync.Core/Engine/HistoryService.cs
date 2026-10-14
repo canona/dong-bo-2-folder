@@ -33,6 +33,32 @@ public static class HistoryService
                      .ToList();
     }
 
+    /// <summary>
+    /// Don dep history: xoa cac thu muc stamp co ngay (8 ky tu dau yyyyMMdd) cu hon keepDays.
+    /// Tra ve so stamp da xoa. keepDays <= 0 = khong don. Stamp khong parse duoc ngay thi giu nguyen.
+    /// </summary>
+    public static int Cleanup(string root, int keepDays)
+    {
+        if (keepDays <= 0) return 0;
+        var historyRoot = Path.Combine(root, HistoryFolderName);
+        if (!Directory.Exists(historyRoot)) return 0;
+        var cutoff = DateTime.Today.AddDays(-keepDays);
+        int removed = 0;
+        foreach (var stampDir in Directory.GetDirectories(historyRoot))
+        {
+            var stamp = Path.GetFileName(stampDir);
+            if (stamp.Length < 8) continue;
+            if (!DateTime.TryParseExact(stamp[..8], "yyyyMMdd", null,
+                    System.Globalization.DateTimeStyles.None, out var day)) continue;
+            if (day < cutoff)
+            {
+                Directory.Delete(stampDir, recursive: true);
+                removed++;
+            }
+        }
+        return removed;
+    }
+
     /// <summary>Khoi phuc 1 ban trong history ve vi tri goc. Tra ve duong dan dich.</summary>
     public static string Restore(string root, HistoryEntry entry)
     {

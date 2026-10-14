@@ -9,6 +9,14 @@ $root = Split-Path $PSScriptRoot -Parent
 $dist = Join-Path $root 'dist'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 
+# Sinh file icon .ico tu ban base64 (repo chi luu .b64 vi cong day code chi nhan file text)
+$icoB64 = Join-Path $root 'src\FolderSync.App\Assets\foldersync.ico.b64'
+$ico = Join-Path $root 'src\FolderSync.App\Assets\foldersync.ico'
+if (Test-Path $icoB64) {
+    [IO.File]::WriteAllBytes($ico, [Convert]::FromBase64String((Get-Content $icoB64 -Raw)))
+    Write-Host "Da sinh icon: $ico"
+}
+
 # Self-contained + single file: may dich khong can cai .NET rieng.
 dotnet publish (Join-Path $root 'src\FolderSync.App\FolderSync.App.csproj') `
     -c Release -r win-x64 --self-contained true `

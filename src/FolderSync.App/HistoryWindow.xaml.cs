@@ -12,6 +12,7 @@ public partial class HistoryWindow : Window
     public HistoryWindow(string leftRoot, string rightRoot)
     {
         InitializeComponent();
+        Icon = IconHelper.AppIcon;
         _leftRoot = leftRoot;
         _rightRoot = rightRoot;
         RefreshList();

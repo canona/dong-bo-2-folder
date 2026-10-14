@@ -7,8 +7,14 @@
     <Nullable>enable</Nullable>
     <!-- Cho phep build kiem chung tren may khong phai Windows (CI/Linux) -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- File .ico duoc sinh tu Assets\foldersync.ico.b64 (xem packaging/build-release.ps1);
+         chi ap dung khi da sinh file (ban build tren may Windows sau khi giai ma) -->
+    <ApplicationIcon Condition="Exists('Assets\foldersync.ico')">Assets\foldersync.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FolderSync.Core\FolderSync.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\foldersync.ico" Condition="Exists('Assets\foldersync.ico')" />
   </ItemGroup>
 </Project>

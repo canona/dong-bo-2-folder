@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="blue-folder" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="green-folder" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#22c55e" />
+      <stop offset="100%" stop-color="#15803d" />
+    </linearGradient>
+  </defs>
+
+  <rect x="32" y="32" width="448" height="448" rx="90" fill="url(#bg-grad)" />
+
+  <path d="M 140 256 A 116 116 0 0 1 372 256" fill="none" stroke="#06b6d4" stroke-width="32" stroke-linecap="round" />
+  <polygon points="345,245 405,245 375,285" fill="#06b6d4" />
+
+  <path d="M 372 256 A 116 116 0 0 1 140 256" fill="none" stroke="#06b6d4" stroke-width="32" stroke-linecap="round" />
+  <polygon points="167,267 107,267 137,227" fill="#06b6d4" />
+
+  <g transform="translate(100, 150)">
+    <path d="M 12 0 H 64 L 84 24 H 148 A 12 12 0 0 1 160 36 V 116 A 12 12 0 0 1 148 128 H 12 A 12 12 0 0 1 0 116 V 12 A 12 12 0 0 1 12 0 Z" fill="#2563eb" />
+    <path d="M 0 36 H 160 V 116 A 12 12 0 0 1 148 128 H 12 A 12 12 0 0 1 0 116 Z" fill="url(#blue-folder)" />
+  </g>
+
+  <g transform="translate(252, 210)">
+    <path d="M 12 0 H 64 L 84 24 H 148 A 12 12 0 0 1 160 36 V 116 A 12 12 0 0 1 148 128 H 12 A 12 12 0 0 1 0 116 V 12 A 12 12 0 0 1 12 0 Z" fill="#16a34a" />
+    <path d="M 0 36 H 160 V 116 A 12 12 0 0 1 148 128 H 12 A 12 12 0 0 1 0 116 Z" fill="url(#green-folder)" />
+
+    <circle cx="150" cy="110" r="28" fill="#059669" />
+    <path d="M 136 110 L 146 120 L 164 100" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>

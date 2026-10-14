@@ -1,7 +1,8 @@
 <Window x:Class="FolderSync.App.HistoryWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Lich su va khoi phuc file" Height="440" Width="760" WindowStartupLocation="CenterOwner">
+        Title="Lich su va khoi phuc file" Height="440" Width="760" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource PageBgBrush}">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>

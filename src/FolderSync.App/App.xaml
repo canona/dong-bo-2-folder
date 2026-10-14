@@ -2,5 +2,60 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
-    <Application.Resources />
+    <Application.Resources>
+        <!-- Bang mau thuong hieu FolderSync (tu logo/SVG): navy - cyan - xanh duong - xanh la -->
+        <SolidColorBrush x:Key="NavyDarkBrush" Color="#0F172A"/>
+        <SolidColorBrush x:Key="NavyPanelBrush" Color="#1E293B"/>
+        <SolidColorBrush x:Key="CyanBrush" Color="#06B6D4"/>
+        <SolidColorBrush x:Key="CyanDarkBrush" Color="#0891B2"/>
+        <SolidColorBrush x:Key="BlueFolderBrush" Color="#2563EB"/>
+        <SolidColorBrush x:Key="GreenFolderBrush" Color="#16A34A"/>
+        <SolidColorBrush x:Key="GreenBrightBrush" Color="#22C55E"/>
+        <SolidColorBrush x:Key="PageBgBrush" Color="#F1F5F9"/>
+        <SolidColorBrush x:Key="CardBorderBrush" Color="#CBD5E1"/>
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#64748B"/>
+        <SolidColorBrush x:Key="HeaderRowBrush" Color="#E2E8F0"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#DC2626"/>
+        <SolidColorBrush x:Key="AmberBrush" Color="#D97706"/>
+        <SolidColorBrush x:Key="VioletBrush" Color="#7C3AED"/>
+
+        <!-- Nut mac dinh toan app -->
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#0F172A"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}"/>
+        </Style>
+
+        <!-- Nut tren thanh cong cu nen navy -->
+        <Style x:Key="ToolbarButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Background" Value="{StaticResource NavyPanelBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#334155"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- Nut Phan tich: cyan -->
+        <Style x:Key="AnalyzeButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource CyanBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CyanBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <!-- Nut Dong bo: xanh la -->
+        <Style x:Key="SyncButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource GreenFolderBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource GreenFolderBrush}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+
+        <!-- Chip loc dang RadioButton -->
+        <Style x:Key="FilterChipStyle" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,14,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+    </Application.Resources>
 </Application>

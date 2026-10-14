@@ -2,3 +2,6 @@ bin/
 obj/
 *.user
 .vs/
+
+# Icon .ico duoc sinh tu ban .b64 (GitHub connector chi day duoc file text)
+src/FolderSync.App/Assets/foldersync.ico

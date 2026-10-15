@@ -153,8 +153,7 @@ Mỗi điều từng là **lỗi mất dữ liệu thật** và đều có test 
 
 ## 6. Trạng thái hiện tại (15/10/2026)
 
-- `main` trên GitHub: tới commit `47798a7` (Giai đoạn 1 — sửa lỗi an toàn).
-- Nhánh local `perf/phan-tich-lon` (tách từ `feat/job-lien-tuc`): **chưa commit** các đợt 4–12 (đợt 12: giới hạn tốc độ chép; đợt 10: Full/Mini/khay, chạy cùng Windows, bộ cài; đợt 11: phân tích folder lớn nhanh — hash theo nhu cầu, cache DB, danh sách ảo hóa, Hủy). Harness **145/145 PASS**, App build 0 lỗi.
+- `main` trên GitHub: tới commit `678c072` (đợt 4–12: Job liên tục độc lập, phân tích folder lớn nhanh, Full/Mini/khay, chạy cùng Windows, bộ cài 0.3.0, giới hạn tốc độ chép). Harness **145/145 PASS**, App build 0 lỗi.
 - Quy mô: Core ~2.300 dòng, App ~3.000 dòng (riêng `MainWindow.xaml.cs` ~1.200), harness ~1.300 dòng.
 
 ### Hạn chế đã biết

@@ -65,7 +65,7 @@ Rủi ro đã ghi nhận nhưng **chưa sửa** (đưa vào Giai đoạn 2): wat
 
 ## Đợt 4 — Cây so sánh thẳng cột, tiến trình Job/file, tốc độ (14/10/2026, Claude Code)
 
-Trạng thái lúc ghi: **chưa commit** (chờ người dùng test thực tế rồi mới commit + push).
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 Yêu cầu từ người dùng (kèm ảnh chụp GoodSync):
 
@@ -97,7 +97,7 @@ Ghi chú quy trình: khi tự động hóa UI để chụp màn hình, chỉ ch�
 
 ## Đợt 5 — Job chạy liên tục, độc lập; giữ kết quả khi chuyển Job (15/10/2026, Claude Code)
 
-Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`, gộp cả thay đổi đợt 4 chưa commit).
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 Yêu cầu: (1) bấm qua lại các Job thì bảng phân tích bị trắng; (2) cấu hình Job đã tạo để **chạy liên tục** — có thay đổi ở nguồn thì chép sang đích, Mirror thì thay đổi ở folder nào cũng xử lý; (3) **các Job hoạt động độc lập**.
 
@@ -114,7 +114,7 @@ Hiện trạng trước khi sửa: cả app dùng chung 1 cờ `_busy` + 1 `_aut
 
 ## Đợt 6 — Dung lượng ổ trực quan + cảnh báo lỗi bằng màu (15/10/2026, Claude Code)
 
-Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`).
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 Yêu cầu (kèm ảnh: Job Backup sang USB H: FAT32 14,3 GB chỉ còn 248 KB, 5 file `.rar` lỗi "There is not enough space on the disk"): (1) hình ảnh trực quan dung lượng ổ còn lại; (2) đồng bộ lỗi có cảnh báo màu.
 
@@ -127,7 +127,7 @@ Yêu cầu (kèm ảnh: Job Backup sang USB H: FAT32 14,3 GB chỉ còn 248 KB, 
 
 ## Đợt 7 — Backup liên tục không chép lại file bị xóa ở đích (15/10/2026, Claude Code)
 
-Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`).
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 - Báo lỗi: Job SynFolder2 (Backup, bật liên tục) — người dùng xóa file ở folder đích `H:\Alarms` nhưng không được chép lại.
 - Nguyên nhân: `JobRunner.WatchedRoots` chỉ theo dõi folder nguồn với chế độ Backup (giả định sai: "đích thay đổi thì Backup không cần làm gì"). Engine vốn xử lý đúng (file có ở nguồn, thiếu ở đích → chép), chỉ là không có sự kiện kích hoạt.
@@ -136,7 +136,7 @@ Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`).
 
 ## Đợt 8 — Nhãn LIEN TUC sai + đổi nhanh chế độ (15/10/2026, Claude Code)
 
-Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`).
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 - **Lỗi**: SynFolder2 đã tắt đồng bộ liên tục nhưng vẫn hiện nhãn LIEN TUC (dòng trạng thái cũng mất "Dang theo doi" nhưng giữ kết quả cũ). Nguyên nhân: sửa Job → `ReloadJobs` thay runner mới và Dispose runner cũ; runner cũ bắn `StateChanged(Idle)` qua `Dispatcher.BeginInvoke`, tới **sau** khi danh sách vẽ lại → `Update(runnerCu)` ghi đè dòng Job bằng Options cũ. Sửa: `MainWindow.IsCurrent(runner)` — bỏ qua sự kiện của runner đã bị thay; `JobRunner.InheritHistory` để runner mới giữ "lần chạy cuối"; lần chạy dở của runner cũ vẫn hiện kết quả nhưng dòng Job cập nhật theo runner hiện tại. Kiểm chứng bằng UI Automation (DB demo riêng): mở Tùy chọn → bỏ "Dong bo lien tuc" → Lưu → nhãn biến mất, dòng giữ "12:53 copy 1…".
 - **Tính năng**: bấm vùng giữa 2 thẻ folder (mũi tên + tên chế độ, có viền khi rê chuột) → menu chọn Backup 1 chiều / Mirror 1 chiều (đích giống hệt nguồn) / Đồng bộ 2 chiều. Hộp xác nhận nêu hậu quả riêng từng chế độ (Mirror xóa file chỉ có ở đích → history; 2 chiều chép ngược file chỉ có ở đích về nguồn) và cảnh báo Job liên tục sẽ chạy NGAY theo chế độ mới. Đổi chế độ xóa bảng phân tích cũ (tính theo chế độ cũ). **Chưa tự động kiểm chứng được** (vùng này là `Border`, UI Automation không bấm được nếu không điều khiển chuột thật) — chờ người dùng thử.
@@ -145,7 +145,7 @@ Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`).
 
 ## Đợt 9 — Khôi phục nhiều file + trạng thái đã khôi phục (15/10/2026, Claude Code)
 
-Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`).
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 - Báo lỗi: cửa sổ Lịch sử chọn nhiều file nhưng chỉ khôi phục 1 (code dùng `SelectedItem`); không biết file nào đã/chưa khôi phục; file đã khôi phục vẫn cho khôi phục lại.
 - Core `HistoryService`:
@@ -157,7 +157,7 @@ Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`).
 
 ## Đợt 10 — Full / Mini / Tray Icon, chạy cùng Windows, bộ cài đặt (15/10/2026, Claude Code)
 
-Trạng thái lúc ghi: **chưa commit** (nhánh `feat/job-lien-tuc`).
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 Quyết định của người dùng (hỏi trước khi làm): cài Inno Setup vào ổ D: chế độ user; bấm X = ẩn xuống khay.
 
@@ -170,7 +170,7 @@ Quyết định của người dùng (hỏi trước khi làm): cài Inno Setup 
 
 ## Đợt 11 — Điều tra: "Phân tích" treo với folder lớn, nhiều file (15/10/2026, Claude Code)
 
-Trạng thái: **đã sửa** (người dùng duyệt "sửa tất cả theo đề xuất"), nhánh `perf/phan-tich-lon`, chưa commit.
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 - Đo trên bộ dữ liệu tự tạo `D:\ThucHanhAI\demo-dong-bo\Bench` (40.020 file, 2,1 GB; đích có sẵn 75%):
   - Quét có hash SHA-256 toàn bộ nội dung: nguồn 19,7 s + đích 26,8 s (không hash: 3,1 s; có cache: 3,2 s). So sánh 3 chiều: 0,03 s. RenameDetector 3.000×3.000: 0,26 s (O(xóa×chép)).
@@ -185,7 +185,7 @@ Trạng thái: **đã sửa** (người dùng duyệt "sửa tất cả theo đ�
 
 ## Đợt 12 — Giới hạn tốc độ chép (băng thông) cho từng Job (15/10/2026, Claude Code)
 
-Trạng thái: **chưa commit** (nhánh `perf/phan-tich-lon`). Làm theo quy trình 5 bước người dùng yêu cầu (phân tích → test FAIL → Core → UI → harness).
+Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 
 - **Thiết kế**: `JobOptions.MaxCopySpeedMBps` (0 = không giới hạn; JSON cũ + `Legacy()` = 0 → Job có sẵn giữ hành vi cũ) → `JobRunner.CreateSession` → `SyncOptions.MaxBytesPerSecond` → `SyncExecutor` tạo **1 `BandwidthThrottle` cho cả lần chạy** (tính chung mọi file, không reset theo file).
 - **An toàn**: throttle chỉ chèn thời gian chờ trong vòng ghi file tạm `.tmp-sync` (sau mỗi khối); trình tự tmp → kiểm size/hash → rename và chốt xóa hàng loạt giữ nguyên. Chờ bằng `ct.WaitHandle.WaitOne` → Hủy trong lúc chờ đi đúng nhánh `OperationCanceledException` hiện có → file tạm bị xóa. Bị giới hạn thì khối đọc/ghi ~1/10 giây dữ liệu (64 KB–1 MB) cho tiến trình mượt; "chạy bù" tối đa 1 giây sau khi đứng yên (vd đang kiểm hash) để không vượt giới hạn xa. Không giới hạn bước kiểm hash file tạm / hash lúc phân tích (đọc, không phải truyền).

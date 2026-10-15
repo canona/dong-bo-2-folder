@@ -318,7 +318,8 @@ public sealed class SyncSession
     }
 
     /// <summary>Ca 2 pha: Analyze + Execute + luu state/nhat ky. Huy luc phan tich -> OperationCanceledException.</summary>
-    public SessionOutcome Run(IProgress<SyncProgress>? progress = null, CancellationToken ct = default)
+    public SessionOutcome Run(IProgress<SyncProgress>? progress = null, CancellationToken ct = default,
+        PauseGate? pause = null)
     {
         var started = DateTime.UtcNow;
         var rootNotes = EnsureRootsForFirstRun();
@@ -342,7 +343,7 @@ public sealed class SyncSession
                 Plan: preview.Actions, BytesTotal: CopyBytes(preview.Actions, ctx.Left.Entries, ctx.Right.Entries),
                 ScanLeft: ctx.Left.Entries, ScanRight: ctx.Right.Entries));
             var executor = new SyncExecutor(_leftRoot, _rightRoot, _options);
-            result = executor.Execute(preview.Actions, baseline, progress, ct);
+            result = executor.Execute(preview.Actions, baseline, progress, ct, pause);
         }
 
         if (!result.Aborted && !result.Canceled)

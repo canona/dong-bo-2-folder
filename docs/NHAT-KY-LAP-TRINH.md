@@ -204,6 +204,26 @@ Trạng thái: đã commit lên `main` (15/10/2026).
 - **Lỗi sau commit `ca1240a`**: nút Đóng của hộp Giới thiệu không đóng — `IsCancel="True"` chỉ tự đóng cửa sổ mở bằng `ShowDialog()`, hộp này mở bằng `Show()` (không modal, để mở được từ khay). Sửa: thêm `Click` → `Close()`. Kiểm chứng qua UI Automation: bấm Đóng → hộp đóng.
 - **Bộ cài**: đã build lại `dist\FolderSync-Setup-0.3.0.exe` (64,6 MB) + `FolderSync-portable.zip` — Setup.exe và FolderSync.App.exe đều có Company = VTC Digital, Copyright © 2026 VTC Digital.
 
+## Đợt 14 — Mất nút Hủy / thanh tiến trình khi Job đang chạy; Tạm dừng / Hủy từ menu chuột phải (15/10/2026, Claude Code)
+
+Trạng thái: đã commit lên `main` (15/10/2026), bộ cài 0.3.0 build lại.
+
+- **Hiện tượng (người dùng)**: "chạy một lúc là không còn nút Hủy"; Job26 liên tục đang chép nhưng mất cả thanh tiến trình, dòng Job hiện "Đang theo dõi • 16:51 Đã hủy giữa chừng" trong khi bảng vẫn "Kiểm chứng...". Người dùng nghi 1 Job xong làm ẩn tiến trình mọi Job — đã rà: mọi chỗ ẩn/hiện thanh tiến trình đều lọc theo Job đang chọn, không phải nguyên nhân.
+- **Nguyên nhân**: sửa Tùy chọn hoặc bật/tắt Liên tục (menu chuột phải) khi Job đang chạy → `ReloadJobs` tạo runner MỚI, runner cũ vẫn chép tiếp (khóa static theo Id). `State`/`IsBusy`/`Cancel()` là của từng instance → runner mới báo rảnh: UI ẩn nút Hủy, dòng Job "Đang theo dõi", bấm Hủy không dừng được; bấm Phân tích thì `ProgressVisible = false` rồi bị từ chối vì khóa bận → ẩn luôn thanh tiến trình của lần chạy đang diễn ra. Thêm: thay đổi file trong lúc runner cũ chạy bị bỏ sót (runner cũ đã Dispose không tự chạy lại, runner mới gặp khóa bận thì bỏ).
+- **Sửa**: `JobRunner.Active` (static `ConcurrentDictionary<Id, JobRunner>`) — runner giữ khóa ghi danh khi chạy; `State`/`IsBusy`/`Cancel` của runner khác cùng Id chuyển tới runner đó; kết thúc lần chạy bắn thêm `StateChanged` để UI vẽ lại theo runner hiện tại (`OnRunnerStateChanged` dùng runner HIỆN TẠI thay vì bỏ qua sự kiện runner cũ). Gặp khóa bận mà không phải chính mình đang chạy → thử lại sau 3 giây (chỉ khi Job bật tự động). Phân tích bị từ chối giữ nguyên thanh tiến trình nếu Job đang bận.
+- **Tính năng Tạm dừng / Tiếp tục** (yêu cầu thêm): `PauseGate` (ManualResetEventSlim), chờ ở đầu mỗi hành động và sau mỗi khối ghi `.tmp-sync` → không phá copy nguyên tử; Hủy khi đang tạm dừng thoát ngay, xóa file tạm. UI: nút "Tam dung/Tiep tuc" cạnh "Huy" trên thanh tiến trình; menu chuột phải Job thêm "Tam dung"/"Tiep tuc" và "Huy lan chay"; dòng Job "⏸ Tam dung" (cam), thanh trạng thái "dang TAM DUNG". Tạm dừng chỉ áp cho pha chép.
+- **Kiểm chứng**: 11 ca mới trong `JobRunnerTests` (thay runner khi đang chạy: runner mới báo bận, Hủy từ runner mới dừng được runner cũ, không sót tmp, file đổi trong lúc đó vẫn được đồng bộ; Tạm dừng: tmp không tăng 1,5 giây, đích chưa bị đụng, Tiếp tục chép đúng nội dung; Hủy khi tạm dừng < 3 giây, không sót tmp, lần sau không kẹt). Trên code cũ: ca "runner mới báo bận" và "Hủy từ runner mới" FAIL (`State=Watching`, không hủy được). Harness **156/156 PASS**, App build 0 lỗi / 0 cảnh báo. Chạy thử app (DB portable riêng, Job liên tục 403 file / 200 MB, 10 MB/s): tắt Liên tục bằng menu chuột phải khi đang chép → nút Hủy + Tạm dừng vẫn hiện; Tạm dừng → tiến trình đứng yên; Tiếp tục → chép tiếp; Hủy từ menu chuột phải → dừng, không sót tmp.
+- **Sự cố môi trường**: harness bị ngắt giữa chừng vì ổ C: đầy (còn 8 MB) → 205 thư mục `foldersync-*` (242 MB) không được dọn; đã xóa và chạy harness với `TEMP` trên D:.
+
+## Đợt 15 — Chỉ số máy (CPU / Memory / Disk / Network) trên thanh trạng thái (15/10/2026, Claude Code)
+
+Trạng thái: đã commit lên `main` (15/10/2026), bộ cài 0.3.0 build lại.
+
+- **Yêu cầu**: hiện 4 chỉ số như cột Task Manager ở thanh dưới màn hình chính.
+- **Thiết kế**: `SystemMonitor` (App) chỉ dùng API Windows có sẵn: CPU từ `GetSystemTimes` (chênh lệch 2 lần đo; kernel time đã gồm idle); Memory = `dwMemoryLoad` của `GlobalMemoryStatusEx`; Disk = 100 − `\PhysicalDisk(*)\% Idle Time` của ổ bận nhất qua PDH (`PdhAddEnglishCounter` vì tên counter bị dịch theo ngôn ngữ Windows; bỏ `_Total` vì là trung bình, che mất ổ đang bận); Network = (byte nhận + gửi)/giây so với tốc độ liên kết của card bận nhất (bỏ loopback/tunnel). PDH lỗi → ô hiện "--", không ảnh hưởng đồng bộ.
+- **UI**: 4 ô kiểu Task Manager (số % đậm + nhãn xanh) giữa dòng trạng thái và dòng bản quyền; nền đậm dần ở ≥ 50 / 70 / 90%; tooltip chi tiết (RAM đã dùng / tổng, ổ bận nhất, card mạng + Mbps / tốc độ liên kết). `DispatcherTimer` 1 giây, đo trên thread nền, bỏ qua khi cửa sổ ẩn xuống khay / thu nhỏ hoặc lần đo trước chưa xong.
+- **Kiểm chứng**: console riêng dùng chính `SystemMonitor.cs`: mỗi lần đo ~45–55 ms; CPU khớp `Get-Counter \Processor Information(_Total)\% Processor Utility` (lệch theo thời điểm lấy mẫu); Memory 87% (11,0 / 12,5 GB); Disk ổ "0 C: D:"; Network card Ethernet 100 Mbps. App build 0 lỗi / 0 cảnh báo (build ra thư mục riêng vì người dùng đang chạy bản Debug với dữ liệu thật — không tắt app của người dùng). **Chưa chụp được giao diện** vì mutex 1 phiên bản chặn mở bản thứ 2.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

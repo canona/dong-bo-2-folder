@@ -66,6 +66,9 @@ public static class JobRunnerTests
         ContinuousMirrorCreatesTarget();
         NoSelfTriggerLoop();
         IndependentJobs();
+        ReplacedRunnerWhileRunning();
+        ReplacedRunnerCancel();
+        PauseResumeCancel();
         HashCache();
         StoreThreadSafety();
         return (_pass, _fail);
@@ -182,6 +185,121 @@ public static class JobRunnerTests
             var resA = runA.GetAwaiter().GetResult();
             Check("Job A van hoan tat dung sau do", resA?.Result?.Copied == 1);
         }
+    }
+
+    // --- Sua Job (doi tuy chon / bat-tat lien tuc) trong luc dang chay = runner MOI thay runner cu, runner cu
+    //     van chep tiep (khoa theo Id). Truoc day runner moi bao "ranh": UI an nut Huy + thanh tien trinh,
+    //     va thay doi file trong luc runner cu chay bi bo qua (runner moi gap khoa ban -> bo luon). ---
+    private static void ReplacedRunnerWhileRunning()
+    {
+        var left = NewTempDir("rr-l"); var right = NewTempDir("rr-r");
+        File.WriteAllBytes(Full(left, "lon.bin"), new byte[8 * 1024 * 1024]);
+        var o = Continuous(); o.MaxCopySpeedMBps = 2; // ~4 giay -> con dang chay khi thay runner
+        var (a, store) = NewRunner("rr", left, right, SyncMode.BackupOneWay, o);
+        using (store)
+        {
+            var planned = new StageFlag(SyncProgressStage.Bytes);
+            var runA = a.RunAsync("test", planned);
+            WaitUntil(() => planned.Seen, 5000); // runner cu da quet xong + dang chep -> khong thay file ghi sau
+            var b = new JobRunner(store.ListJobs().Single(), store);
+            b.InheritHistory(a);
+            a.Dispose();
+            using (b)
+            {
+                b.StartAuto(appStarting: false);
+                Check("Thay runner khi dang chay: runner moi bao dang ban (UI con nut Huy)",
+                    b.IsBusy && b.State == JobRunState.Running, $"IsBusy={b.IsBusy} State={b.State}");
+                Write(left, "moi.txt", "trong luc runner cu chay");
+                runA.GetAwaiter().GetResult();
+                Check("Thay runner khi dang chay: runner cu xong -> runner moi het ban", WaitUntil(() => !b.IsBusy, 3000));
+                Check("Thay runner khi dang chay: file doi trong luc runner cu chay van duoc dong bo sau do",
+                    WaitUntil(() => Read(right, "moi.txt") == "trong luc runner cu chay", 20000));
+            }
+        }
+    }
+
+    private static void ReplacedRunnerCancel()
+    {
+        var left = NewTempDir("rc-l"); var right = NewTempDir("rc-r");
+        File.WriteAllBytes(Full(left, "lon.bin"), new byte[16 * 1024 * 1024]);
+        var o = new JobOptions { MaxCopySpeedMBps = 2, CleanupHistory = false }; // ~8 giay neu khong huy
+        var (a, store) = NewRunner("rc", left, right, SyncMode.BackupOneWay, o);
+        using (store)
+        {
+            var runA = a.RunAsync("test");
+            WaitUntil(() => a.IsBusy, 5000);
+            var b = new JobRunner(store.ListJobs().Single(), store);
+            a.Dispose();
+            using (b)
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                b.Cancel(); // nut Huy tren UI goi runner HIEN TAI
+                var res = runA.Wait(4000) ? runA.Result : null;
+                Check("Thay runner khi dang chay: Huy tu runner moi dung duoc lan chay cua runner cu",
+                    res?.Result?.Canceled == true, $"{sw.ElapsedMilliseconds} ms, Canceled={res?.Result?.Canceled}");
+                if (res is null) runA.Wait();
+                Check("Thay runner + Huy: khong sot file tam",
+                    Directory.GetFiles(right, "*.tmp-sync", SearchOption.AllDirectories).Length == 0);
+            }
+        }
+    }
+
+    // --- Tam dung / tiep tuc / huy khi dang tam dung: dung giua 2 khoi ghi file tam, khong dong vao file dich ---
+    private static void PauseResumeCancel()
+    {
+        var left = NewTempDir("pz-l"); var right = NewTempDir("pz-r");
+        var data = new byte[6 * 1024 * 1024];
+        new Random(7).NextBytes(data);
+        File.WriteAllBytes(Full(left, "lon.bin"), data);
+        File.WriteAllBytes(Full(left, "lon2.bin"), data);
+        var o = new JobOptions { MaxCopySpeedMBps = 3, CleanupHistory = false };
+        var (r, store) = NewRunner("pz", left, right, SyncMode.BackupOneWay, o);
+        using (store) using (r)
+        {
+            var copying = new StageFlag(SyncProgressStage.Bytes);
+            var run = r.RunAsync("test", copying);
+            WaitUntil(() => copying.Seen, 5000);
+            r.Pause();
+            Thread.Sleep(300); // khoi dang ghi do xong
+            long TmpBytes() => Directory.GetFiles(right, "*.tmp-sync", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+            long before = TmpBytes();
+            Thread.Sleep(1500);
+            long after = TmpBytes();
+            Check("Tam dung: IsPaused + Job van ban (khoa giu, khong chay chong)", r.IsPaused && r.IsBusy);
+            Check("Tam dung: file tam KHONG tang trong 1,5 giay, file dich chua bi dong vao",
+                before == after && !File.Exists(Full(right, "lon.bin")), $"tmp {before} -> {after}");
+            r.Resume();
+            var res = run.Wait(15000) ? run.Result : null;
+            Check("Tiep tuc: chep xong ca 2 file, dung noi dung",
+                res?.Result?.Copied == 2 && !r.IsPaused
+                && File.ReadAllBytes(Full(right, "lon.bin")).AsSpan().SequenceEqual(data),
+                $"Copied={res?.Result?.Copied}");
+
+            // Huy trong luc dang tam dung -> dung ngay, xoa file tam
+            File.Delete(Full(right, "lon.bin")); File.Delete(Full(right, "lon2.bin"));
+            copying = new StageFlag(SyncProgressStage.Bytes);
+            run = r.RunAsync("test", copying);
+            WaitUntil(() => copying.Seen, 5000);
+            r.Pause();
+            Thread.Sleep(300);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            r.Cancel();
+            res = run.Wait(3000) ? run.Result : null;
+            Check("Huy khi dang tam dung: dung ngay (< 3 giay), Canceled", res?.Result?.Canceled == true,
+                $"{sw.ElapsedMilliseconds} ms");
+            if (res is null) run.Wait();
+            Check("Huy khi dang tam dung: khong sot file tam",
+                Directory.GetFiles(right, "*.tmp-sync", SearchOption.AllDirectories).Length == 0);
+            Check("Huy khi dang tam dung: lan chay sau khong bi ket tam dung",
+                r.RunAsync("test").Wait(15000) && !r.IsPaused && File.Exists(Full(right, "lon2.bin")));
+        }
+    }
+
+    /// <summary>Bao (dong bo, tren thread chep) khi thay 1 giai doan tien trinh.</summary>
+    private sealed class StageFlag(SyncProgressStage stage) : IProgress<SyncProgress>
+    {
+        public volatile bool Seen;
+        public void Report(SyncProgress value) { if (value.Stage == stage) Seen = true; }
     }
 
     // --- Cache hash: file khong doi size + mtime thi dung lai hash cu ---

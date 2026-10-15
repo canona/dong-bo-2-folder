@@ -104,10 +104,12 @@ public sealed class SyncExecutor
     /// <param name="baselineFileCount">Moc tinh % cho chot an toan: so file trong state, hoac tong so file
     /// hien co o 2 phia neu chua co state (lan chay dau).</param>
     /// <param name="progress">Bao Started/Completed/Failed cho tung hanh dong (tru Skip/Conflict).</param>
+    /// <param name="pause">Tam dung giua chung (null = khong ho tro) - chi dung o diem an toan, xem PauseGate.</param>
     public SyncResult Execute(IReadOnlyList<SyncAction> actions, int baselineFileCount,
-        IProgress<SyncProgress>? progress = null, CancellationToken ct = default)
+        IProgress<SyncProgress>? progress = null, CancellationToken ct = default, PauseGate? pause = null)
     {
         var result = new SyncResult();
+        _pause = pause;
         // 1 bo dieu toc cho ca lan chay (gioi han tinh chung moi file, khong reset theo tung file)
         _throttle = _options.MaxBytesPerSecond > 0 ? new BandwidthThrottle(_options.MaxBytesPerSecond) : null;
 
@@ -130,6 +132,9 @@ public sealed class SyncExecutor
         for (int i = 0; i < actions.Count; i++)
         {
             if (ct.IsCancellationRequested) { result.Canceled = true; break; }
+            // Tam dung giua 2 hanh dong: chua dong vao file nao cua hanh dong tiep theo
+            try { _pause?.WaitWhilePaused(ct); }
+            catch (OperationCanceledException) { result.Canceled = true; break; }
             var action = actions[i];
             bool silent = action.Kind is SyncActionKind.Skip or SyncActionKind.Conflict;
             if (!silent) progress?.Report(new SyncProgress(SyncProgressStage.Started, i, actions.Count, action));
@@ -225,6 +230,7 @@ public sealed class SyncExecutor
 
     /// <returns>SHA-256 cua noi dung da chep.</returns>
     private BandwidthThrottle? _throttle;
+    private PauseGate? _pause;
 
     private string AtomicCopy(string sourceFull, string destFull, string destRoot, string rel,
         CopyReporter? report = null, CancellationToken ct = default)
@@ -327,6 +333,8 @@ public sealed class SyncExecutor
                 // Chi chen thoi gian cho vao vong ghi FILE TAM - thu tu copy nguyen tu khong doi;
                 // huy trong luc cho -> OperationCanceledException -> AtomicCopy xoa file tam
                 _throttle?.Consume(read, ct);
+                // Tam dung giua 2 khoi ghi file TAM (file dich chua bi dong vao); huy luc dang dung -> xoa file tam
+                _pause?.WaitWhilePaused(ct);
                 done += read;
                 if (report is not null && DateTime.UtcNow - lastReport >= ReportInterval)
                 {

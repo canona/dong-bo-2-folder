@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\packaging\build-release.ps1 -IsccPath
 - `FolderSync.slnx` là định dạng solution mới, cần .NET SDK ≥ 9.0.200. Máy chỉ có SDK 8 thì build từng `.csproj` như trên.
 - Đang chạy app thì `dotnet build` App sẽ lỗi khóa file exe → đóng app trước (`taskkill /IM FolderSync.App.exe /F`).
 - Build WPF bị ngắt giữa chừng có thể để lại `src/FolderSync.App/FolderSync.App_*_wpftmp.csproj` → xóa, không commit.
-- Hiện tại: **145/145 PASS** (20 P0 + 15 P1 + 13 P2 + 15 RUN + 33 SAFE + 30 OPT + 12 PERF + 7 BW). Harness tự dọn thư mục tạm `%TEMP%\foldersync-*` khi chạy xong. Build App 0 error / 0 warning.
+- Hiện tại: **156/156 PASS** (20 P0 + 15 P1 + 13 P2 + 26 RUN + 33 SAFE + 30 OPT + 12 PERF + 7 BW). Harness tự dọn thư mục tạm `%TEMP%\foldersync-*` khi chạy xong. Build App 0 error / 0 warning.
 
 ## Cấu trúc
 
@@ -51,6 +51,7 @@ src/FolderSync.Core/            Engine, KHONG phu thuoc UI - moi logic dong bo n
   Engine/HistoryService.cs      Liet ke / trang thai so voi file hien tai / khoi phuc nhieu file / don .foldersync_history
   Engine/FileHasher.cs          SHA-256 (co ban huy duoc + bao so byte)
   Engine/BandwidthThrottle.cs   Gioi han toc do chep (token bucket) cho 1 lan chay cua 1 Job
+  Engine/PauseGate.cs           Tam dung / tiep tuc 1 lan chay (dung giua 2 khoi ghi file tam)
   Engine/HashPlanner.cs         Chon file CAN hash (cung size khac mtime; ung vien doi ten) - khong hash moi file
   Storage/SqliteStateStore.cs   Bang jobs (+settings_json), file_state, sync_runs; migration
 src/FolderSync.App/             WPF: MainWindow (danh sach Job + JobView rieng tung Job, cay so sanh, tien trinh), JobOptionsWindow, HistoryWindow
@@ -59,6 +60,7 @@ src/FolderSync.App/             WPF: MainWindow (danh sach Job + JobView rieng t
   TrayIconService.cs            Icon khay (WinForms NotifyIcon) + menu + thong bao bong bong
   AppSettings.cs                Cai dat chung (app-settings.json canh state.db) + StartupManager (HKCU\...\Run)
   AppInfo.cs, AboutWindow       Phien ban + ban quyen (doc tu metadata assembly) + hop Gioi thieu
+  SystemMonitor.cs              Chi so may CPU / Memory / Disk / Network (kieu Task Manager) cho thanh trang thai
 tests/FolderSync.Core.Harness/  Program.cs (P0) + P1Tests, P2Tests, JobRunnerTests, SafetyTests, OptionsTests, PerfTests, BandwidthTests
 packaging/                      build-release.ps1, FolderSync.iss
 Directory.Build.props           Product, Company (VTC Digital), Copyright, Version - ap cho moi project
@@ -84,6 +86,8 @@ docs/                           Huong-dan-cai-dat-va-chay.md (nguoi dung), NHAT-
 - Liên tục: watcher **cả 2 folder ở mọi chế độ** (Backup cũng phải chép lại khi file ở đích bị xóa/sửa) → debounce `AutoFileChangeDelaySec` → chạy. Khi bật thì chạy bắt kịp 1 lần. Thay đổi trong lúc chạy → chạy lại sau. Watcher lỗi / folder mất → gỡ, thử gắn lại 15 giây/lần + ngay sau mỗi lần chạy.
 - **Bỏ qua file do chính lần chạy ghi** bằng ảnh chụp (có/không, size, mtime) chụp lúc `Completed` — không dùng cửa sổ thời gian (người dùng sửa ngay file vừa chép vẫn được đồng bộ).
 - Sửa Job (đổi cấu hình/chế độ/bật-tắt liên tục) = **tạo runner mới** thay runner cũ (`InheritHistory` giữ lần chạy cuối). Runner cũ vẫn bắn sự kiện (vd `Idle` lúc Dispose) **sau** khi danh sách đã vẽ lại → mọi handler phải kiểm `IsCurrent(runner)`, nếu không sẽ ghi đè dòng Job bằng cấu hình cũ (từng làm Job đã tắt liên tục vẫn hiện nhãn LIEN TUC).
+- **Runner cũ vẫn đang chạy khi bị thay** (sửa Tùy chọn / bật-tắt Liên tục lúc Job đang chép): `JobRunner.Active` (static, theo Id) giữ runner đang giữ khóa; `State`/`IsBusy`/`IsPaused`/`Cancel()`/`Pause()`/`Resume()` của runner MỚI đều chuyển tới lần chạy đó. Trước đây runner mới báo rảnh → UI ẩn nút Hủy + thanh tiến trình, Hủy không có tác dụng. Lần chạy tự động gặp khóa bận mà Job không tự đang chạy (đang Phân tích hoặc runner cũ giữ khóa) → thử lại sau 3 giây (`RetryWhenBusy`), không bỏ sót thay đổi file.
+- **Tạm dừng** (`PauseGate`): chỉ dừng ở điểm an toàn — trước mỗi hành động và giữa 2 khối ghi `.tmp-sync` (cùng chỗ với throttle); file đích không bao giờ ghi dở. Hủy khi đang tạm dừng thoát ngay + xóa file tạm. Chỉ tạm dừng được pha CHÉP (pha quét/phân tích thì dùng Hủy). Kết thúc lần chạy luôn `Resume()` để lần sau không bị kẹt.
 - Sự kiện của runner bắn từ **thread nền** → UI luôn `Dispatcher.BeginInvoke`. Tiến trình vào `JobView` riêng từng Job; chỉ vẽ ra màn hình khi Job đó đang được chọn.
 
 ## Bất biến an toàn — KHÔNG được phá
@@ -141,6 +145,7 @@ Mỗi điều dưới đây từng là lỗi thật (làm mất dữ liệu) và
 - **Một phiên bản duy nhất** là bất biến an toàn: 2 tiến trình cùng mở 1 `state.db` = 2 runner cho cùng 1 Job → chạy chồng. Tên mutex `FolderSyncSingleInstance` dùng chung với `AppMutex` trong `packaging/FolderSync.iss`.
 - **Bản quyền / phiên bản**: © 2026 VTC Digital, phát triển 10/2026 bởi Canona. Nguồn duy nhất cho code là `Directory.Build.props` (`AppInfo` đọc lại từ assembly — không ghi cứng chuỗi trong UI). Đổi phiên bản phải sửa **cả** `Version` ở đó **và** `MyAppVersion` trong `packaging/FolderSync.iss`.
 - **Chạy cùng Windows**: giá trị `FolderSync` trong `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` = `"<exe>" --tray`. App (`StartupManager`) và bộ cài (`[Registry]` task `autostart`) ghi **cùng tên + cùng tham số**; gỡ cài đặt luôn xóa giá trị này. Đổi tên/tham số phải sửa cả 2 nơi.
+- **Chỉ số máy trên thanh trạng thái** (`SystemMonitor`): chỉ dùng Win32 (`GetSystemTimes`, `GlobalMemoryStatusEx`, PDH) + `NetworkInterface`, không thêm gói NuGet. Disk = 100 − `% Idle Time` của ổ vật lý BẬN NHẤT (bỏ `_Total` vì là trung bình); phải dùng `PdhAddEnglishCounter` — tên counter bị dịch theo ngôn ngữ Windows. Network = (nhận + gửi) / tốc độ liên kết của card bận nhất. Đo 1 giây/lần trên thread nền (~50 ms/lần), **không đo khi cửa sổ ẩn/thu nhỏ**.
 - WinForms bật chỉ để dùng `NotifyIcon`; csproj có `<Using Remove="System.Windows.Forms" />` + `System.Drawing` để không trùng tên với WPF. Trong code dùng alias (`Forms.`, `Drawing.`).
 - UI Automation: `MenuItem` phải gọi `InvokePattern` (không phải `TogglePattern` — Toggle chỉ đổi dấu tích, không bắn `Click`).
 - App chế độ portable: có file `portable.flag` cạnh exe → `state.db` nằm cạnh exe; không có → `%AppData%\FolderSync\state.db`. Đừng để quên `portable.flag` trong `bin\Debug` sau khi thử nghiệm.

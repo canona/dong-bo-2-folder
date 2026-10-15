@@ -86,6 +86,8 @@
                             <ContextMenu x:Name="JobMenu" Opened="JobMenu_Opened">
                                 <MenuItem x:Name="MenuAnalyze" Header="Phan tich" Click="MenuAnalyze_Click"/>
                                 <MenuItem x:Name="MenuSync" Header="Dong bo ngay" Click="MenuSync_Click"/>
+                                <MenuItem x:Name="MenuPause" Header="Tam dung" Click="MenuPause_Click"/>
+                                <MenuItem x:Name="MenuCancel" Header="Huy lan chay" Click="MenuCancel_Click"/>
                                 <Separator/>
                                 <MenuItem x:Name="MenuContinuous" Header="Dong bo lien tuc (tu chay khi co thay doi)"
                                           IsCheckable="False" Click="MenuContinuous_Click"/>
@@ -250,9 +252,12 @@
                         BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" Padding="10,6" Margin="0,0,0,6">
                     <StackPanel>
                         <DockPanel>
-                            <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Huy" Padding="12,1" Margin="10,0,0,0"
+                            <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Huy" Padding="12,1" Margin="6,0,0,0"
                                     Visibility="Collapsed" Click="Cancel_Click"
                                     ToolTip="Dung phan tich / dong bo dang chay (file dang chep do se bi bo, khong hong file dich)"/>
+                            <Button x:Name="PauseButton" DockPanel.Dock="Right" Content="Tam dung" Padding="12,1" Margin="10,0,0,0"
+                                    Visibility="Collapsed" Click="Pause_Click"
+                                    ToolTip="Tam dung dong bo (dung giua 2 khoi ghi file tam, file dich khong bi ghi do dang)"/>
                             <TextBlock x:Name="JobProgressRight" DockPanel.Dock="Right" Foreground="{StaticResource MutedTextBrush}"/>
                             <TextBlock x:Name="JobProgressLeft" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
@@ -422,13 +427,63 @@
         <!-- ===== Thanh trang thai + tien trinh ===== -->
         <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0">
             <Grid Margin="12,0">
+                <Grid.Resources>
+                    <!-- O chi so may kieu Task Manager: so % dam o tren, nhan xanh o duoi, nen dam dan theo muc tai -->
+                    <Style x:Key="StatCell" TargetType="Border">
+                        <Setter Property="Width" Value="64"/>
+                        <Setter Property="Padding" Value="0,1,8,1"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}"/>
+                        <Setter Property="BorderThickness" Value="1,0,0,0"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                    </Style>
+                    <Style x:Key="StatValue" TargetType="TextBlock">
+                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                        <Setter Property="FontSize" Value="13"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="Text" Value="--"/>
+                    </Style>
+                    <Style x:Key="StatLabel" TargetType="TextBlock">
+                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                        <Setter Property="FontSize" Value="10"/>
+                        <Setter Property="Foreground" Value="#1E6FD9"/>
+                    </Style>
+                </Grid.Resources>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="300"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" x:Name="StatusText" Text="San sang." VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"/>
-                <TextBlock Grid.Column="1" x:Name="CopyrightNotice" HorizontalAlignment="Right" VerticalAlignment="Center"
+                <StackPanel Grid.Column="1" x:Name="SysStatsPanel" Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="12,0,0,0">
+                    <Border x:Name="CpuCell" Style="{StaticResource StatCell}">
+                        <StackPanel>
+                            <TextBlock x:Name="CpuValue" Style="{StaticResource StatValue}"/>
+                            <TextBlock Text="CPU" Style="{StaticResource StatLabel}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="MemCell" Style="{StaticResource StatCell}">
+                        <StackPanel>
+                            <TextBlock x:Name="MemValue" Style="{StaticResource StatValue}"/>
+                            <TextBlock Text="Memory" Style="{StaticResource StatLabel}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="DiskCell" Style="{StaticResource StatCell}">
+                        <StackPanel>
+                            <TextBlock x:Name="DiskValue" Style="{StaticResource StatValue}"/>
+                            <TextBlock Text="Disk" Style="{StaticResource StatLabel}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="NetCell" Style="{StaticResource StatCell}">
+                        <StackPanel>
+                            <TextBlock x:Name="NetValue" Style="{StaticResource StatValue}"/>
+                            <TextBlock Text="Network" Style="{StaticResource StatLabel}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                <TextBlock Grid.Column="2" x:Name="CopyrightNotice" HorizontalAlignment="Right" VerticalAlignment="Center"
+                           Margin="16,0,0,0"
                            FontSize="11" Foreground="{StaticResource MutedTextBrush}" Cursor="Hand"
                            MouseLeftButtonUp="CopyrightNotice_Click" ToolTip="Gioi thieu FolderSync"/>
             </Grid>

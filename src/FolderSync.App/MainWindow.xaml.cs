@@ -20,6 +20,7 @@ public sealed class JobListItem : INotifyPropertyChanged
     private static readonly Brush Busy = Frozen(0x08, 0x91, 0xB2);
     private static readonly Brush Ok = Frozen(0x16, 0xA3, 0x4A);
     private static readonly Brush Bad = Frozen(0xDC, 0x26, 0x26);
+    private static readonly Brush PausedBrush = Frozen(0xD9, 0x77, 0x06);
 
     public JobListItem(JobRecord job) => Job = job;
 
@@ -54,6 +55,7 @@ public sealed class JobListItem : INotifyPropertyChanged
         var last = runner?.LastFinishedLocal is { } t ? $"{t:HH:mm} {runner.LastSummary}" : null;
         (StatusLine, StatusBrush) = runner?.State switch
         {
+            JobRunState.Running when runner.IsPaused => ("⏸ Tam dung", PausedBrush),
             JobRunState.Running => ("Dang dong bo...", Busy),
             JobRunState.Analyzing => ("Dang phan tich...", Busy),
             JobRunState.Watching when runner.LastErrorCount > 0 => ("⚠ Dang theo doi • " + last, Bad),
@@ -163,6 +165,60 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             foreach (var r in _runners.Values) r.Dispose(); // dung watcher/timer cua moi Job
+            _sysTimer.Stop();
+            _sysMonitor.Dispose();
+        };
+        _sysTimer.Tick += SysTimer_Tick;
+        _sysTimer.Start();
+    }
+
+    // ---------- Chi so may (CPU / Memory / Disk / Network) tren thanh trang thai ----------
+
+    private readonly SystemMonitor _sysMonitor = new();
+    private readonly System.Windows.Threading.DispatcherTimer _sysTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private bool _sysSampling;
+
+    private async void SysTimer_Tick(object? sender, EventArgs e)
+    {
+        // An xuong khay / Mini thi khong ai nhin -> khong do (do tren thread nen, khong chan UI)
+        if (!IsVisible || WindowState == WindowState.Minimized || _sysSampling) return;
+        _sysSampling = true;
+        try
+        {
+            var s = await Task.Run(_sysMonitor.Sample);
+            SetStat(CpuCell, CpuValue, s.Cpu, $"CPU: {Pct(s.Cpu)} ({Environment.ProcessorCount} luong)");
+            SetStat(MemCell, MemValue, s.Memory,
+                $"Memory: {Pct(s.Memory)} - dang dung {FormatSize((long)s.MemUsedBytes)} / {FormatSize((long)s.MemTotalBytes)}");
+            SetStat(DiskCell, DiskValue, s.Disk,
+                $"Disk: thoi gian hoat dong {Pct(s.Disk)}" + (s.DiskName is null ? "" : $" (o ban nhat: {s.DiskName})"));
+            SetStat(NetCell, NetValue, s.Network, s.NetName is null
+                ? $"Network: {Pct(s.Network)}"
+                : $"Network: {Pct(s.Network)} - {s.NetName}: {FormatBits(s.NetBitsPerSec)} / lien ket {FormatBits(s.NetLinkBitsPerSec)}");
+        }
+        catch (Exception) { /* do chi so khong duoc khong anh huong dong bo */ }
+        finally { _sysSampling = false; }
+    }
+
+    private static string Pct(double? v) => v is null ? "--" : $"{v:0}%";
+
+    private static string FormatBits(double bps)
+        => bps >= 1e9 ? $"{bps / 1e9:0.#} Gbps" : bps >= 1e6 ? $"{bps / 1e6:0.#} Mbps" : $"{bps / 1e3:0} Kbps";
+
+    // Nen dam dan theo muc tai giong Task Manager
+    private static readonly Brush StatLow = Frozen(0xFF, 0xF4, 0xD6);
+    private static readonly Brush StatMid = Frozen(0xFF, 0xE4, 0xB0);
+    private static readonly Brush StatHigh = Frozen(0xFF, 0xC9, 0x8A);
+
+    private static void SetStat(Border cell, TextBlock value, double? pct, string tip)
+    {
+        value.Text = Pct(pct);
+        cell.ToolTip = tip;
+        cell.Background = pct switch
+        {
+            >= 90 => StatHigh,
+            >= 70 => StatMid,
+            >= 50 => StatLow,
+            _ => Brushes.Transparent
         };
     }
 
@@ -529,10 +585,14 @@ public partial class MainWindow : Window
         SyncButton.IsEnabled = free;
         CancelButton.Visibility = runner is { IsBusy: true } ? Visibility.Visible : Visibility.Collapsed;
         CancelButton.IsEnabled = true;
+        // Tam dung chi co nghia khi dang CHEP (phan tich chi doc, huy la du)
+        PauseButton.Visibility = runner?.State == JobRunState.Running ? Visibility.Visible : Visibility.Collapsed;
+        PauseButton.Content = runner?.IsPaused == true ? "Tiep tuc" : "Tam dung";
         HistoryButton.IsEnabled = runner is not null;
         StatusText.Text = runner is null ? "San sang."
             : runner.State switch
             {
+                JobRunState.Running when runner.IsPaused => $"Job '{runner.Job.Name}' dang TAM DUNG - bam Tiep tuc de chep tiep.",
                 JobRunState.Running => $"Job '{runner.Job.Name}' dang dong bo...",
                 JobRunState.Analyzing => $"Job '{runner.Job.Name}' dang phan tich...",
                 JobRunState.Watching => $"Job '{runner.Job.Name}': dong bo lien tuc dang bat - tu chay khi co thay doi.",
@@ -1067,8 +1127,10 @@ public partial class MainWindow : Window
 
     private void OnRunnerStateChanged(JobRunner r)
     {
-        if (!IsCurrent(r)) return;
-        _jobs.FirstOrDefault(j => j.Job.Id == r.Id)?.Update(r);
+        // Runner cu (Job vua bi sua) con dang chay: trang thai cua no doc qua runner HIEN TAI (JobRunner.State
+        // tra trang thai lan chay dang giu khoa) - khong dung r de khong ghi de dong Job bang cau hinh cu
+        if (!_runners.TryGetValue(r.Id, out var current)) return;
+        _jobs.FirstOrDefault(j => j.Job.Id == r.Id)?.Update(current);
         if (IsSelected(r.Id)) UpdateButtons();
         UpdateTrayStatus();
     }
@@ -1162,13 +1224,36 @@ public partial class MainWindow : Window
 
     private async void Analyze_Click(object sender, RoutedEventArgs e) => await AnalyzeSelectedAsync();
 
-    private void Cancel_Click(object sender, RoutedEventArgs e)
+    private void Cancel_Click(object sender, RoutedEventArgs e) => CancelSelected();
+
+    private void CancelSelected()
     {
         var runner = SelectedRunner;
         if (runner is not { IsBusy: true }) return;
         runner.Cancel();
         CancelButton.IsEnabled = false; // bat lai khi Job ranh (UpdateButtons)
         Log($"Dang huy Job '{runner.Job.Name}'... (dung o file tiep theo)");
+    }
+
+    private void Pause_Click(object sender, RoutedEventArgs e) => TogglePauseSelected();
+
+    private void TogglePauseSelected()
+    {
+        var runner = SelectedRunner;
+        if (runner is not { State: JobRunState.Running }) return;
+        if (runner.IsPaused)
+        {
+            runner.Resume();
+            Log($"Tiep tuc dong bo Job '{runner.Job.Name}'.");
+        }
+        else
+        {
+            runner.Pause();
+            Log($"Da TAM DUNG Job '{runner.Job.Name}' (file dang chep dung giua chung o file tam, file dich chua bi dong vao).");
+        }
+        // StateChanged ve UI qua BeginInvoke; cap nhat ngay de nut doi chu khong tre
+        _jobs.FirstOrDefault(j => j.Job.Id == runner.Id)?.Update(runner);
+        UpdateButtons();
     }
 
     private async Task AnalyzeSelectedAsync()
@@ -1186,8 +1271,9 @@ public partial class MainWindow : Window
             diag.Mark($"quet + so sanh (nen) - hash {outcome?.HashedFiles ?? 0} file / {FormatSize(outcome?.HashedBytes ?? 0)}");
             if (outcome is null)
             {
-                // Dang ban (runner da ghi log) hoac nguoi dung bam Huy
-                view.ProgressVisible = false;
+                // Dang ban (runner da ghi log) hoac nguoi dung bam Huy. Dang ban = co lan chay khac (vd tu dong,
+                // hoac runner cu cua Job vua sua) -> giu thanh tien trinh cua no, khong an
+                view.ProgressVisible = runner.IsBusy;
                 view.Indeterminate = false;
                 if (IsSelected(runner.Id)) ApplyProgressToUi(view);
                 return;
@@ -1398,11 +1484,16 @@ public partial class MainWindow : Window
         if (runner is null) return;
         MenuAnalyze.IsEnabled = MenuSync.IsEnabled = !runner.IsBusy;
         MenuContinuous.IsChecked = runner.Options.AutoOnFileChange;
+        MenuPause.IsEnabled = runner.State == JobRunState.Running;
+        MenuPause.Header = runner.IsPaused ? "Tiep tuc" : "Tam dung";
+        MenuCancel.IsEnabled = runner.IsBusy;
     }
 
     private async void MenuAnalyze_Click(object sender, RoutedEventArgs e) => await AnalyzeSelectedAsync();
     private async void MenuSync_Click(object sender, RoutedEventArgs e) => await SyncSelectedAsync();
     private void MenuOptions_Click(object sender, RoutedEventArgs e) => EditSelectedJob();
+    private void MenuPause_Click(object sender, RoutedEventArgs e) => TogglePauseSelected();
+    private void MenuCancel_Click(object sender, RoutedEventArgs e) => CancelSelected();
 
     /// <summary>Bat/tat nhanh "dong bo lien tuc" cho Job dang chon (luu vao Job Options).</summary>
     private void MenuContinuous_Click(object sender, RoutedEventArgs e)

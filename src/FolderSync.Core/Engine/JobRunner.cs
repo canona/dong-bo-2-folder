@@ -31,6 +31,7 @@ public sealed class JobRunner : IDisposable
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new();
     private static readonly TimeSpan OwnDirGrace = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan RewatchInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan RetryWhenBusy = TimeSpan.FromSeconds(3);
 
     private readonly SqliteStateStore _store;
     private readonly SemaphoreSlim _gate;
@@ -73,8 +74,27 @@ public sealed class JobRunner : IDisposable
     public JobRecord Job { get; }
     public JobOptions Options { get; }
     public string Id => Job.Id;
-    public JobRunState State { get; private set; }
+    /// <summary>
+    /// Runner dang giu khoa chay cua tung Job (theo Id). Sua Job khi dang chay = runner MOI thay runner cu,
+    /// runner cu van chay tiep toi het (khoa theo Id) -> runner moi phai bao trang thai / Huy / Tam dung
+    /// cua lan chay do. Truoc day runner moi bao "ranh": UI an nut Huy + thanh tien trinh, Huy khong tac dung.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, JobRunner> Active = new();
+
+    private JobRunState _state;
+    private readonly PauseGate _pause = new();
+
+    /// <summary>Trang thai cua Job - neu runner cu (da bi thay) con dang chay thi la trang thai cua no.</summary>
+    public JobRunState State => ActiveOther() is { } other ? other._state : _state;
     public bool IsBusy => State is JobRunState.Analyzing or JobRunState.Running;
+    /// <summary>Lan dong bo dang chay cua Job nay dang tam dung.</summary>
+    public bool IsPaused => (ActiveOther() ?? this) is var r && r._state == JobRunState.Running && r._pause.IsPaused;
+
+    private JobRunner? ActiveOther()
+        => Active.TryGetValue(Job.Id, out var a) && !ReferenceEquals(a, this) ? a : null;
+
+    private void EnterActive() => Active[Job.Id] = this;
+    private void LeaveActive() => Active.TryRemove(new KeyValuePair<string, JobRunner>(Job.Id, this));
     public bool AutoEnabled => Options.AutoOnFileChange || Options.AutoPeriodMinutes > 0;
     public DateTime? LastFinishedLocal { get; private set; }
     public string? LastSummary { get; private set; }
@@ -121,6 +141,7 @@ public sealed class JobRunner : IDisposable
         var cts = BeginCancelable();
         try
         {
+            EnterActive();
             SetState(JobRunState.Analyzing);
             return await Task.Run(() =>
             {
@@ -137,7 +158,9 @@ public sealed class JobRunner : IDisposable
         {
             EndCancelable(cts);
             SetState(_autoStarted ? JobRunState.Watching : JobRunState.Idle);
+            LeaveActive();
             _gate.Release();
+            StateChanged?.Invoke(this); // runner moi (neu Job vua bi sua) doi trang thai theo
         }
     }
 
@@ -164,10 +187,31 @@ public sealed class JobRunner : IDisposable
     /// </summary>
     public void Cancel()
     {
-        lock (_lock)
+        var target = ActiveOther() ?? this;
+        lock (target._lock)
         {
-            try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
+            try { target._cts?.Cancel(); } catch (ObjectDisposedException) { }
         }
+        // Dang tam dung: WaitWhilePaused cung nhan ct nen thoat ngay; mo gate de lan chay sau khong bi ket
+        target._pause.Resume();
+    }
+
+    /// <summary>Tam dung lan dong bo dang chay (dung o diem an toan, xem PauseGate). Khong chay thi khong lam gi.</summary>
+    public void Pause()
+    {
+        var target = ActiveOther() ?? this;
+        if (target._state != JobRunState.Running) return;
+        target._pause.Pause();
+        target.StateChanged?.Invoke(target);
+        if (!ReferenceEquals(target, this)) StateChanged?.Invoke(this);
+    }
+
+    public void Resume()
+    {
+        var target = ActiveOther() ?? this;
+        target._pause.Resume();
+        target.StateChanged?.Invoke(target);
+        if (!ReferenceEquals(target, this)) StateChanged?.Invoke(this);
     }
 
     /// <summary>
@@ -179,7 +223,12 @@ public sealed class JobRunner : IDisposable
         if (_disposed) return null;
         if (!await _gate.WaitAsync(0))
         {
-            lock (_lock) { if (_running) _dirtyDuringRun = true; }
+            bool retry;
+            lock (_lock) { if (_running) _dirtyDuringRun = true; retry = !_running; }
+            // Khoa dang bi giu boi lan PHAN TICH hoac runner CU (Job vua bi sua, da Dispose nen khong tu chay
+            // lai): thu lai sau, neu khong thay doi file xay ra trong luc do bi bo sot toi lan thay doi tiep theo.
+            // ScheduleRun tu bo qua khi Job khong bat tu dong.
+            if (retry) ScheduleRun(RetryWhenBusy, trigger);
             return null;
         }
 
@@ -196,6 +245,8 @@ public sealed class JobRunner : IDisposable
                 _written.Clear();
                 _ownDirs.Clear();
             }
+            _pause.Resume();
+            EnterActive();
             SetState(JobRunState.Running);
             Started?.Invoke(this, trigger);
 
@@ -206,7 +257,7 @@ public sealed class JobRunner : IDisposable
                 outcome = await Task.Run(() =>
                 {
                     RunScript(Options.ScriptPreAnalyze, "", null);
-                    var oc = CreateSession().Run(sink, cts.Token);
+                    var oc = CreateSession().Run(sink, cts.Token, _pause);
                     RunScript(Options.ScriptPostSync, oc.Result!.Aborted ? "aborted" : "", oc.Result);
                     CleanupHistory();
                     return oc;
@@ -232,8 +283,11 @@ public sealed class JobRunner : IDisposable
             LastFinishedLocal = DateTime.Now;
             LastSummary = Summarize(outcome, error);
             LastErrorCount = error is not null ? 1 : outcome?.Result?.Errors.Count ?? 0;
+            _pause.Resume();
             SetState(_autoStarted ? JobRunState.Watching : JobRunState.Idle);
+            LeaveActive();
             _gate.Release();
+            StateChanged?.Invoke(this); // runner moi (neu Job vua bi sua) doi trang thai theo
         }
 
         Finished?.Invoke(this, new JobRunReport(Job.Id, trigger, outcome, error));
@@ -518,8 +572,8 @@ public sealed class JobRunner : IDisposable
 
     private void SetState(JobRunState state)
     {
-        if (State == state) return;
-        State = state;
+        if (_state == state) return;
+        _state = state;
         StateChanged?.Invoke(this);
     }
 

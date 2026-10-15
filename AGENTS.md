@@ -48,7 +48,7 @@ File này dành cho **mọi AI agent** (Claude, Codex, Cursor, Copilot, Gemini�
 ## 2. Bắt đầu nhanh
 
 ```powershell
-# Test engine - dong cuoi phai la: TONG: 145 PASS, 0 FAIL (tu don thu muc tam khi chay xong)
+# Test engine - dong cuoi phai la: TONG: 156 PASS, 0 FAIL (tu don thu muc tam khi chay xong)
 dotnet run --project tests\FolderSync.Core.Harness
 
 # Build + chay app

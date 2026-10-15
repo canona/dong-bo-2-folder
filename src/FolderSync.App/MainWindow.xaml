@@ -33,7 +33,11 @@
                     <Button Content="+ Job moi" Style="{StaticResource ToolbarButtonStyle}" Click="AddJob_Click"/>
                     <Button x:Name="AnalyzeButton" Content="Phan tich" Style="{StaticResource AnalyzeButtonStyle}" Click="Analyze_Click"/>
                     <Button x:Name="SyncButton" Content="Dong bo" Style="{StaticResource SyncButtonStyle}" Click="Sync_Click"/>
-                    <Button x:Name="HistoryButton" Content="Lich su / Khoi phuc" Style="{StaticResource ToolbarButtonStyle}" Margin="0" Click="History_Click"/>
+                    <Button x:Name="HistoryButton" Content="Lich su / Khoi phuc" Style="{StaticResource ToolbarButtonStyle}" Click="History_Click"/>
+                    <!-- Che do Mini + menu Cai dat (chay cung Windows, nut X an xuong khay, thong bao, tam dung, thoat) -->
+                    <Button Content="Mini" Style="{StaticResource ToolbarButtonStyle}" Click="Mini_Click"
+                            ToolTip="Chuyen sang cua so nho o goc man hinh"/>
+                    <Button Content="Cai dat &#x25BE;" Style="{StaticResource ToolbarButtonStyle}" Margin="0" Click="Settings_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -53,11 +57,42 @@
                                Foreground="{StaticResource NavyDarkBrush}" Margin="10,10,10,6"/>
                     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="10">
                         <Button Content="Them" Padding="10,5" Margin="0,0,6,0" Click="AddJob_Click"/>
-                        <Button Content="Sua" Padding="10,5" Margin="0,0,6,0" Click="EditJob_Click"/>
+                        <Button Content="Tuy chon" Padding="10,5" Margin="0,0,6,0" Click="EditJob_Click"
+                                ToolTip="Cau hinh Job: che do, bo loc, dong bo lien tuc / dinh ky, scripts..."/>
                         <Button Content="Xoa" Padding="10,5" Foreground="{StaticResource DangerBrush}" Click="DeleteJob_Click"/>
                     </StackPanel>
-                    <ListBox x:Name="JobList" BorderThickness="0" DisplayMemberPath="Name"
-                             SelectionChanged="JobList_SelectionChanged"/>
+                    <!-- Moi Job: ten + nhan LIEN TUC + trang thai chay rieng (JobListItem cap nhat tu JobRunner).
+                         Chuot phai: menu thao tac; nhap dup: mo Tuy chon Job. -->
+                    <ListBox x:Name="JobList" BorderThickness="0" HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="JobList_SelectionChanged" MouseDoubleClick="JobList_MouseDoubleClick">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="2,3">
+                                    <DockPanel>
+                                        <Border DockPanel.Dock="Right" Visibility="{Binding AutoVisibility}"
+                                                Background="{StaticResource GreenFolderBrush}" CornerRadius="3" Padding="5,0">
+                                            <TextBlock Text="{Binding AutoText}" Foreground="White" FontSize="9"
+                                                       FontWeight="Bold" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                    <TextBlock Text="{Binding StatusLine}" Foreground="{Binding StatusBrush}" FontSize="11"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusLine}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        <ListBox.ContextMenu>
+                            <ContextMenu x:Name="JobMenu" Opened="JobMenu_Opened">
+                                <MenuItem x:Name="MenuAnalyze" Header="Phan tich" Click="MenuAnalyze_Click"/>
+                                <MenuItem x:Name="MenuSync" Header="Dong bo ngay" Click="MenuSync_Click"/>
+                                <Separator/>
+                                <MenuItem x:Name="MenuContinuous" Header="Dong bo lien tuc (tu chay khi co thay doi)"
+                                          IsCheckable="False" Click="MenuContinuous_Click"/>
+                                <MenuItem Header="Tuy chon Job..." Click="MenuOptions_Click"/>
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
+                    </ListBox>
                 </DockPanel>
             </Border>
 
@@ -67,19 +102,38 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="96"/>
                 </Grid.RowDefinitions>
 
-                <!-- Header 2 folder kieu GoodSync: the Trai - mui ten che do - the Phai -->
+                <!-- Header 2 folder kieu GoodSync: the Trai - mui ten che do - the Phai.
+                     Bam vao the de doi folder cua Job (state cu tu bi xoa - xem SqliteStateStore.UpsertJob). -->
                 <Grid Grid.Row="0">
+                    <Grid.Resources>
+                        <Style x:Key="FolderCardStyle" TargetType="Border">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="CornerRadius" Value="6"/>
+                            <Setter Property="Padding" Value="10"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="BorderBrush" Value="{StaticResource CyanBrush}"/>
+                                    <Setter Property="Background" Value="#F0FDFF"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Resources>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="86"/>
+                        <ColumnDefinition Width="112"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource CardBorderBrush}"
-                            BorderThickness="1" CornerRadius="6" Padding="10">
+                    <Border Grid.Column="0" Style="{StaticResource FolderCardStyle}"
+                            MouseLeftButtonUp="LeftCard_Click"
+                            ToolTip="Bam de chon folder Trai (nguon) khac cho Job nay">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <Border Width="26" Height="26" CornerRadius="6" Background="{StaticResource BlueFolderBrush}">
@@ -87,21 +141,59 @@
                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <TextBlock Text="FOLDER TRAI (NGUON)" FontWeight="Bold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="8,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                             </StackPanel>
                             <TextBlock x:Name="LeftPathText" Text="(chua chon Job)" Margin="0,6,0,0"
                                        TextTrimming="CharacterEllipsis" FontSize="13"/>
-                            <TextBlock x:Name="LeftDriveText" Text="" Margin="0,2,0,0" FontSize="12"
+
+                            <!-- Thanh dung luong o: da dung | can chep (Job nay) | con trong -->
+                            <Border Margin="0,6,0,0" Height="8" CornerRadius="4" Background="#E2E8F0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition x:Name="LeftUsedCol" Width="0*"/>
+                                        <ColumnDefinition x:Name="LeftNeedCol" Width="0*"/>
+                                        <ColumnDefinition x:Name="LeftFreeCol" Width="1*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="LeftUsedFill" Grid.Column="0" CornerRadius="4,0,0,4"/>
+                                    <Border x:Name="LeftNeedFill" Grid.Column="1"/>
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Name="LeftDriveText" Text="" Margin="0,3,0,0" FontSize="12"
                                        Foreground="{StaticResource MutedTextBrush}"/>
+                            <TextBlock x:Name="LeftRequiredText" Text="" Margin="0,2,0,0" FontSize="12" FontWeight="SemiBold"
+                                       TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock x:Name="ModeArrowText" Text="&#x21C4;" FontSize="26" FontWeight="Bold"
-                                   Foreground="{StaticResource CyanDarkBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock x:Name="ModeNameText" Text="" FontSize="11" TextAlignment="Center"
-                                   Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"/>
-                    </StackPanel>
-                    <Border Grid.Column="2" Background="White" BorderBrush="{StaticResource CardBorderBrush}"
-                            BorderThickness="1" CornerRadius="6" Padding="10">
+                    <!-- Vung che do o giua: bam de doi nhanh Backup / Mirror / 2 chieu -->
+                    <Border x:Name="ModeBox" Grid.Column="1" Margin="4,0" Padding="2,6" CornerRadius="6"
+                            VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonUp="ModeBox_Click"
+                            ToolTip="Bam de doi che do dong bo cua Job (Backup / Mirror / 2 chieu)">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderBrush" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#F0FDFF"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource CyanBrush}"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock x:Name="ModeArrowText" Text="&#x21C4;" FontSize="26" FontWeight="Bold"
+                                       Foreground="{StaticResource CyanDarkBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="ModeNameText" Text="" FontSize="11" TextAlignment="Center"
+                                       Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"/>
+                            <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="8" HorizontalAlignment="Center"
+                                       Foreground="{StaticResource MutedTextBrush}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource FolderCardStyle}"
+                            MouseLeftButtonUp="RightCard_Click"
+                            ToolTip="Bam de chon folder Phai (dich) khac cho Job nay">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
                                 <Border Width="26" Height="26" CornerRadius="6" Background="{StaticResource GreenFolderBrush}">
@@ -109,13 +201,28 @@
                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <TextBlock Text="FOLDER PHAI (DICH)" FontWeight="Bold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="8,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                             </StackPanel>
                             <TextBlock x:Name="RightPathText" Text="(chua chon Job)" Margin="0,6,0,0"
                                        TextTrimming="CharacterEllipsis" FontSize="13"/>
-                            <TextBlock x:Name="RightDriveText" Text="" Margin="0,2,0,0" FontSize="12"
+
+                            <!-- Thanh dung luong o: da dung | can chep (Job nay) | con trong -->
+                            <Border Margin="0,6,0,0" Height="8" CornerRadius="4" Background="#E2E8F0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition x:Name="RightUsedCol" Width="0*"/>
+                                        <ColumnDefinition x:Name="RightNeedCol" Width="0*"/>
+                                        <ColumnDefinition x:Name="RightFreeCol" Width="1*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="RightUsedFill" Grid.Column="0" CornerRadius="4,0,0,4"/>
+                                    <Border x:Name="RightNeedFill" Grid.Column="1"/>
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Name="RightDriveText" Text="" Margin="0,3,0,0" FontSize="12"
                                        Foreground="{StaticResource MutedTextBrush}"/>
-                            <TextBlock x:Name="RequiredText" Text="" Margin="0,2,0,0" FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{StaticResource GreenFolderBrush}"/>
+                            <TextBlock x:Name="RightRequiredText" Text="" Margin="0,2,0,0" FontSize="12" FontWeight="SemiBold"
+                                       TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -124,9 +231,9 @@
                 <DockPanel Grid.Row="1" Margin="0,10,0,6">
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                         <RadioButton x:Name="FilterAll" Style="{StaticResource FilterChipStyle}" GroupName="ViewFilter"
-                                     Content="Tat ca" IsChecked="True" Checked="Filter_Changed"/>
+                                     Content="Tat ca" Checked="Filter_Changed"/>
                         <RadioButton x:Name="FilterChanges" Style="{StaticResource FilterChipStyle}" GroupName="ViewFilter"
-                                     Content="Thay doi" Checked="Filter_Changed"/>
+                                     Content="Thay doi" IsChecked="True" Checked="Filter_Changed"/>
                         <RadioButton x:Name="FilterConflicts" Style="{StaticResource FilterChipStyle}" GroupName="ViewFilter"
                                      Content="Xung dot" Checked="Filter_Changed"/>
                         <RadioButton x:Name="FilterDeletes" Style="{StaticResource FilterChipStyle}" GroupName="ViewFilter"
@@ -138,75 +245,177 @@
                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                 </DockPanel>
 
-                <!-- Tieu de cot cua cay so sanh -->
-                <Border Grid.Row="2" Background="{StaticResource HeaderRowBrush}">
-                    <Grid Margin="26,4,8,4">
+                <!-- Tien trinh ca Job kieu GoodSync: %, so file, dung luong, thoi gian con lai, toc do -->
+                <Border Grid.Row="2" x:Name="JobProgressPanel" Visibility="Collapsed" Background="White"
+                        BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" Padding="10,6" Margin="0,0,0,6">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Huy" Padding="12,1" Margin="10,0,0,0"
+                                    Visibility="Collapsed" Click="Cancel_Click"
+                                    ToolTip="Dung phan tich / dong bo dang chay (file dang chep do se bi bo, khong hong file dich)"/>
+                            <TextBlock x:Name="JobProgressRight" DockPanel.Dock="Right" Foreground="{StaticResource MutedTextBrush}"/>
+                            <TextBlock x:Name="JobProgressLeft" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <ProgressBar x:Name="JobProgressBar" Height="14" Margin="0,5,0,0" Minimum="0" Maximum="1000"
+                                     Foreground="{StaticResource GreenBrightBrush}"/>
+                        <TextBlock x:Name="CurrentFileText" Margin="0,4,0,0" FontSize="11" TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource MutedTextBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Tieu de cot cua cay so sanh. Do rong cac cot co dinh PHAI trung voi template dong ben duoi;
+                     le phai = be rong thanh cuon doc (cay luon hien thanh cuon) de cot thang hang tuyet doi. -->
+                <Border Grid.Row="3" Background="{StaticResource HeaderRowBrush}"
+                        BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1,1,1,0">
+                    <Grid x:Name="TreeHeaderGrid" Height="26">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="105"/>
+                            <ColumnDefinition Width="*" MinWidth="200"/>
+                            <ColumnDefinition Width="96"/>
                             <ColumnDefinition Width="128"/>
-                            <ColumnDefinition Width="52"/>
-                            <ColumnDefinition Width="105"/>
+                            <ColumnDefinition Width="44"/>
+                            <ColumnDefinition Width="96"/>
                             <ColumnDefinition Width="128"/>
-                            <ColumnDefinition Width="86"/>
-                            <ColumnDefinition Width="200"/>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="180"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Muc" FontWeight="SemiBold"/>
-                        <TextBlock Grid.Column="1" Text="L Size" FontWeight="SemiBold" TextAlignment="Right"/>
-                        <TextBlock Grid.Column="2" Text="L Date" FontWeight="SemiBold" TextAlignment="Right"/>
-                        <TextBlock Grid.Column="3" Text="Chieu" FontWeight="SemiBold" TextAlignment="Center"/>
-                        <TextBlock Grid.Column="4" Text="R Size" FontWeight="SemiBold" TextAlignment="Right"/>
-                        <TextBlock Grid.Column="5" Text="R Date" FontWeight="SemiBold" TextAlignment="Right"/>
-                        <TextBlock Grid.Column="6" Text="Trang thai" FontWeight="SemiBold"/>
-                        <TextBlock Grid.Column="7" Text="Ly do" FontWeight="SemiBold"/>
+                        <Grid.Resources>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="Padding" Value="6,0"/>
+                            </Style>
+                        </Grid.Resources>
+                        <TextBlock Grid.Column="0" Text="Muc"/>
+                        <TextBlock Grid.Column="1" Text="L Size" TextAlignment="Right"/>
+                        <TextBlock Grid.Column="2" Text="L Date" TextAlignment="Right"/>
+                        <TextBlock Grid.Column="3" Text="Chieu" TextAlignment="Center" Padding="0"/>
+                        <TextBlock Grid.Column="4" Text="R Size" TextAlignment="Right"/>
+                        <TextBlock Grid.Column="5" Text="R Date" TextAlignment="Right"/>
+                        <TextBlock Grid.Column="6" Text="Trang thai"/>
+                        <TextBlock Grid.Column="7" Text="Ly do"/>
                     </Grid>
                 </Border>
 
-                <!-- Cay so sanh -->
-                <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1">
-                    <TreeView x:Name="CompareTree" BorderThickness="0">
-                        <TreeView.Resources>
-                            <HierarchicalDataTemplate DataType="{x:Type local:CompareNode}" ItemsSource="{Binding Children}">
-                                <Grid Margin="0,1">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="105"/>
-                                        <ColumnDefinition Width="128"/>
-                                        <ColumnDefinition Width="52"/>
-                                        <ColumnDefinition Width="105"/>
-                                        <ColumnDefinition Width="128"/>
-                                        <ColumnDefinition Width="86"/>
-                                        <ColumnDefinition Width="200"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
-                                               FontWeight="{Binding NameWeight}"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding LSizeText}" TextAlignment="Right"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding LDateText}" TextAlignment="Right"
-                                               Foreground="{StaticResource MutedTextBrush}"/>
-                                    <TextBlock Grid.Column="3" Text="{Binding Direction}" TextAlignment="Center"
-                                               FontWeight="Bold" Foreground="{Binding DirectionBrush}"/>
-                                    <TextBlock Grid.Column="4" Text="{Binding RSizeText}" TextAlignment="Right"/>
-                                    <TextBlock Grid.Column="5" Text="{Binding RDateText}" TextAlignment="Right"
-                                               Foreground="{StaticResource MutedTextBrush}"/>
-                                    <TextBlock Grid.Column="6" Text="{Binding TrangThai}"/>
-                                    <TextBlock Grid.Column="7" Text="{Binding LyDo}" TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource MutedTextBrush}"/>
-                                </Grid>
-                            </HierarchicalDataTemplate>
-                        </TreeView.Resources>
-                        <TreeView.ItemContainerStyle>
-                            <Style TargetType="TreeViewItem">
-                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
-                                <!-- Keo gian noi dung theo chieu rong de cac cot cua cay thang hang -->
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <!-- Cay so sanh kieu GoodSync, ve bang DANH SACH PHANG AO HOA: chi tao giao dien cho cac dong dang
+                     hien tren man hinh. TreeView truoc day tao phan tu cho MOI file: 40.000 file -> treo > 10 phut,
+                     4 GB RAM. Thu muc thu/mo = chen/go cac dong con (MainWindow.OnNodeExpandedChanged). -->
+                <Border Grid.Row="4" Background="White" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1">
+                    <ListBox x:Name="CompareList" BorderThickness="0" Padding="0" SelectionMode="Single"
+                             HorizontalContentAlignment="Stretch"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.ScrollUnit="Item"
+                             ScrollViewer.CanContentScroll="True"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Visible">
+                        <ListBox.Resources>
+                            <SolidColorBrush x:Key="LeftCellBrush" Color="#146366F1"/>
+                            <SolidColorBrush x:Key="RightCellBrush" Color="#1A22C55E"/>
+                            <Style x:Key="CellText" TargetType="TextBlock">
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="Padding" Value="6,0"/>
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
                             </Style>
-                        </TreeView.ItemContainerStyle>
-                    </TreeView>
+                            <!-- Nut mo/dong thu muc nho gon -->
+                            <Style x:Key="ExpanderToggle" TargetType="ToggleButton">
+                                <Setter Property="Focusable" Value="False"/>
+                                <Setter Property="Width" Value="16"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="Transparent">
+                                                <TextBlock x:Name="Glyph" Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource MutedTextBrush}"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="Glyph" Property="Text" Value="&#xE70D;"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+
+                            <DataTemplate DataType="{x:Type local:CompareNode}">
+                                <Grid Height="22" Background="{Binding RowBackground}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" MinWidth="200"/>
+                                        <ColumnDefinition Width="96"/>
+                                        <ColumnDefinition Width="128"/>
+                                        <ColumnDefinition Width="44"/>
+                                        <ColumnDefinition Width="96"/>
+                                        <ColumnDefinition Width="128"/>
+                                        <ColumnDefinition Width="90"/>
+                                        <ColumnDefinition Width="180"/>
+                                    </Grid.ColumnDefinitions>
+                                    <!-- Nen cot Trai / Phai nhu GoodSync -->
+                                    <Border Grid.Column="1" Grid.ColumnSpan="2" Background="{StaticResource LeftCellBrush}"/>
+                                    <Border Grid.Column="4" Grid.ColumnSpan="2" Background="{StaticResource RightCellBrush}"/>
+
+                                    <DockPanel Grid.Column="0" Margin="{Binding Indent}" LastChildFill="True">
+                                        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource ExpanderToggle}"
+                                                      IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                                      Visibility="{Binding ToggleVisibility}"/>
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding IconGlyph}" FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="13" Margin="2,0,4,0" VerticalAlignment="Center"
+                                                   Foreground="{Binding IconBrush}"/>
+                                        <TextBlock Text="{Binding Name}" FontWeight="{Binding NameWeight}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Name}"/>
+                                    </DockPanel>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource CellText}" Text="{Binding LSizeText}"
+                                               TextAlignment="Right" FontWeight="{Binding NameWeight}"/>
+                                    <TextBlock Grid.Column="2" Style="{StaticResource CellText}" Text="{Binding LDateText}"
+                                               TextAlignment="Right" Foreground="{StaticResource MutedTextBrush}"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding Direction}" TextAlignment="Center"
+                                               VerticalAlignment="Center" FontWeight="Bold" FontSize="14"
+                                               Foreground="{Binding DirectionBrush}"/>
+                                    <TextBlock Grid.Column="4" Style="{StaticResource CellText}" Text="{Binding RSizeText}"
+                                               TextAlignment="Right" FontWeight="{Binding NameWeight}"/>
+                                    <TextBlock Grid.Column="5" Style="{StaticResource CellText}" Text="{Binding RDateText}"
+                                               TextAlignment="Right" Foreground="{StaticResource MutedTextBrush}"/>
+                                    <Grid Grid.Column="6">
+                                        <ProgressBar Margin="4,4" Minimum="0" Maximum="100" Value="{Binding FilePercent, Mode=OneWay}"
+                                                     Visibility="{Binding ProgressVisibility}" BorderThickness="0"
+                                                     Background="#E2E8F0" Foreground="{StaticResource GreenBrightBrush}"/>
+                                        <TextBlock Style="{StaticResource CellText}" Text="{Binding TrangThai}"
+                                                   Foreground="{Binding StatusBrush}" FontWeight="{Binding StatusWeight}"/>
+                                    </Grid>
+                                    <TextBlock Grid.Column="7" Style="{StaticResource CellText}" Text="{Binding LyDo}"
+                                               Foreground="{Binding LyDoBrush}" ToolTip="{Binding LyDo}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.Resources>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd" Background="Transparent"
+                                                    BorderBrush="#EEF2F6" BorderThickness="0,0,0,1">
+                                                <ContentPresenter HorizontalAlignment="Stretch"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#F1F5F9"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#BFDBFE"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
                 </Border>
 
                 <!-- Nhat ky -->
-                <ListBox Grid.Row="4" x:Name="LogList" Margin="0,8,0,0" FontSize="12"/>
+                <ListBox Grid.Row="5" x:Name="LogList" Margin="0,8,0,0" FontSize="12"/>
             </Grid>
         </Grid>
 
@@ -219,11 +428,6 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" x:Name="StatusText" Text="San sang." VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"/>
-                <Grid Grid.Column="1" x:Name="ProgressPanel" Visibility="Collapsed" VerticalAlignment="Center">
-                    <ProgressBar x:Name="SyncProgressBar" Height="18" Minimum="0"
-                                 Foreground="{StaticResource GreenBrightBrush}"/>
-                    <TextBlock x:Name="ProgressText" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11"/>
-                </Grid>
             </Grid>
         </Border>
     </Grid>

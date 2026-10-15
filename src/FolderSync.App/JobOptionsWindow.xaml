@@ -87,7 +87,8 @@
                         </DockPanel>
                         <CheckBox x:Name="AutoOnStartCheck" Content="Chay Job nay khi mo FolderSync" Margin="0,2"/>
                         <StackPanel Orientation="Horizontal" Margin="0,2">
-                            <CheckBox x:Name="AutoOnFileChangeCheck" Content="Chay khi file thay doi, tre " VerticalAlignment="Center"/>
+                            <CheckBox x:Name="AutoOnFileChangeCheck" FontWeight="SemiBold" VerticalAlignment="Center"
+                                      Content="Dong bo lien tuc: tu chay khi co file thay doi, sau "/>
                             <TextBox x:Name="FileChangeDelayBox" Width="50"/>
                             <TextBlock Text=" giay" VerticalAlignment="Center"/>
                         </StackPanel>
@@ -101,8 +102,10 @@
                             <TextBox x:Name="SafetyBox" Width="50"/>
                             <TextBlock Text=" % so file" VerticalAlignment="Center"/>
                         </StackPanel>
+                        <TextBlock Margin="20,0,0,6" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" FontSize="11"
+                                   Text="Theo doi CA 2 folder. Backup: nguon thay doi thi chep sang dich; file o dich bi xoa/sua thi chep lai tu nguon (file chi co o dich giu nguyen). Mirror: theo doi CA 2 folder - nguon doi thi chep sang dich, dich bi sua/them/xoa thi tra ve giong nguon. 2 chieu: thay doi o folder nao cung duoc chep sang folder kia. Khi bat se dong bo ngay 1 lan de bat kip thay doi luc app tat."/>
                         <TextBlock Margin="0,10,0,0" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap"
-                                   Text="Tu dong chay chi hoat dong khi FolderSync dang mo. Xung dot theo chinh sach o tren; neu chon 'Hoi thu cong' thi lan chay tu dong se bo qua cac file xung dot."/>
+                                   Text="Moi Job chay doc lap (nhieu Job co the dong bo cung luc). Tu dong chay chi hoat dong khi FolderSync dang mo. Xung dot theo chinh sach o tren; neu chon 'Hoi thu cong' thi lan chay tu dong se bo qua cac file xung dot."/>
                     </StackPanel>
 
                     <!-- ===== Tab Scripts ===== -->
@@ -121,12 +124,27 @@
                             <StackPanel>
                                 <CheckBox x:Name="CopyCreationTimeCheck" Content="Copy ca thoi gian tao file (creation time)" Margin="0,2"/>
                                 <CheckBox x:Name="CopyAttributesCheck" Content="Copy thuoc tinh file (attributes)" Margin="0,2"/>
+                                <!-- Gioi han toc do chep (MB/s) cho Job nay: thanh keo 0-200, o so cho phep go gia tri lon hon -->
+                                <DockPanel Margin="0,10,0,0">
+                                    <TextBlock Text="Gioi han toc do chep:" Width="140" VerticalAlignment="Center"/>
+                                    <TextBlock DockPanel.Dock="Right" Text=" MB/s" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="SpeedLimitBox" DockPanel.Dock="Right" Width="56" TextAlignment="Right"
+                                             VerticalAlignment="Center" LostFocus="SpeedLimitBox_LostFocus" KeyDown="SpeedLimitBox_KeyDown"
+                                             ToolTip="0 = khong gioi han. Go so lon hon 200 neu can."/>
+                                    <Slider x:Name="SpeedLimitSlider" Minimum="0" Maximum="200" SmallChange="1" LargeChange="10"
+                                            TickFrequency="10" TickPlacement="BottomRight" IsSnapToTickEnabled="False"
+                                            VerticalAlignment="Center" Margin="0,0,8,0" ValueChanged="SpeedLimitSlider_ValueChanged"/>
+                                </DockPanel>
+                                <TextBlock x:Name="SpeedLimitHint" Margin="140,2,0,0" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource MutedTextBrush}"/>
                             </StackPanel>
                         </GroupBox>
                         <GroupBox Header="Khi phan tich" Padding="8" Margin="0,10,0,0">
                             <StackPanel>
                                 <CheckBox x:Name="DetectRenamesCheck" Content="Nhan dien doi ten / di chuyen file (do theo noi dung)" Margin="0,2"/>
-                                <CheckBox x:Name="CompareChecksumsCheck" Content="So sanh noi dung bang hash SHA-256 (chac chan, cham hon)" Margin="0,2"/>
+                                <CheckBox x:Name="CompareChecksumsCheck" Content="So sanh noi dung bang hash SHA-256 khi cung kich thuoc ma khac gio sua (khuyen dung)" Margin="0,2"/>
+                                <CheckBox x:Name="FullContentCheck" Margin="20,2,0,2"
+                                          Content="So noi dung TOAN BO file moi lan phan tich (rat cham voi folder lon - chi bat khi can bat file bi sua ma giu nguyen kich thuoc va gio sua)"/>
                                 <TextBlock Margin="20,0,0,4" TextWrapping="Wrap" Foreground="#B45309" FontSize="11"
                                            Text="Tat: chi so kich thuoc + gio sua - file bi sua ma giu nguyen kich thuoc va gio se KHONG duoc phat hien; nhan dien doi ten cung bi tat."/>
                             </StackPanel>

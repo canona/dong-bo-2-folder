@@ -159,6 +159,9 @@ public static class IconHelper
         "DAA5rL4nMK2n/VxQq7A5T6PP1UpNUehJKCaimQQ6nFtI5B+MjW/546B7UXSh6QF6gX0K9mit91o6tefU8cl74KWkoUFBEARBEARB" +
         "EARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARBEARH+P8FEAGc5czlXwAAAABJRU5ErkJggg==" ;
 
+    /// <summary>Byte PNG cua logo - icon khay he thong (System.Drawing) dung khi khong lay duoc icon tu exe.</summary>
+    public static byte[] PngBytes => Convert.FromBase64String(PngBase64);
+
     private static ImageSource? _cached;
 
     public static ImageSource AppIcon

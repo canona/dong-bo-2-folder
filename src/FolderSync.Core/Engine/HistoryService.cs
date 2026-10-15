@@ -2,6 +2,19 @@ namespace FolderSync.Core.Engine;
 
 public sealed record HistoryEntry(string Stamp, string RelativePath, long Size, DateTime FileMtimeUtc, string FullPath);
 
+/// <summary>Quan he giua 1 ban trong history va file HIEN TAI o vi tri goc.</summary>
+public enum HistoryStatus
+{
+    /// <summary>Vi tri goc khong con file -> khoi phuc duoc.</summary>
+    OriginalMissing,
+    /// <summary>Vi tri goc co file nhung noi dung khac ban nay -> khoi phuc duoc (file hien tai vao history truoc).</summary>
+    CurrentDiffers,
+    /// <summary>File hien tai GIONG HET ban nay (da khoi phuc roi) -> khoi phuc lai la vo nghia.</summary>
+    SameAsCurrent
+}
+
+public sealed record RestoreOutcome(HistoryEntry Entry, bool Restored, string Message);
+
 /// <summary>
 /// Quan ly folder lich su .foldersync_history/<yyyyMMdd-HHmmss>/<duong dan goc> trong moi folder goc.
 /// Moi file bi xoa hoac bi ghi de (che do MoveToHistory) deu nam tai day - HistoryService liet ke va khoi phuc.
@@ -59,6 +72,59 @@ public static class HistoryService
         return removed;
     }
 
+    private static string OriginalPath(string root, HistoryEntry entry)
+        => Path.Combine(root, entry.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+
+    /// <summary>
+    /// So ban history voi file hien tai o vi tri goc: khac size -> khac (khong can hash);
+    /// cung size -> so hash. Suy ra tu noi dung that nen dung ca khi file duoc khoi phuc o lan mo app truoc
+    /// hoac nguoi dung tu chep tay.
+    /// </summary>
+    public static HistoryStatus GetStatus(string root, HistoryEntry entry)
+    {
+        var current = new FileInfo(OriginalPath(root, entry));
+        if (!current.Exists) return HistoryStatus.OriginalMissing;
+        if (current.Length != entry.Size) return HistoryStatus.CurrentDiffers;
+        try
+        {
+            return string.Equals(FileHasher.ComputeHash(current.FullName), FileHasher.ComputeHash(entry.FullPath),
+                StringComparison.OrdinalIgnoreCase) ? HistoryStatus.SameAsCurrent : HistoryStatus.CurrentDiffers;
+        }
+        catch (IOException) { return HistoryStatus.CurrentDiffers; } // dang bi khoa - coi nhu khac, de nguoi dung quyet
+    }
+
+    /// <summary>
+    /// Khoi phuc nhieu ban cung luc. Bo qua ban da giong file hien tai. Chon nhieu phien ban cua CUNG 1 file
+    /// thi chi khoi phuc ban moi nhat (khoi phuc ca hai se ghi de lan nhau). 1 file loi khong dung ca dot.
+    /// </summary>
+    public static IReadOnlyList<RestoreOutcome> RestoreMany(string root, IEnumerable<HistoryEntry> entries)
+    {
+        var results = new List<RestoreOutcome>();
+        foreach (var group in entries.GroupBy(e => e.RelativePath, StringComparer.OrdinalIgnoreCase))
+        {
+            var ordered = group.OrderByDescending(e => e.Stamp, StringComparer.Ordinal).ToList();
+            foreach (var older in ordered.Skip(1))
+                results.Add(new(older, false, "Bo qua: da chon ban moi hon cua cung file"));
+
+            var entry = ordered[0];
+            try
+            {
+                if (GetStatus(root, entry) == HistoryStatus.SameAsCurrent)
+                {
+                    results.Add(new(entry, false, "Bo qua: file hien tai da giong ban nay"));
+                    continue;
+                }
+                Restore(root, entry);
+                results.Add(new(entry, true, "Da khoi phuc"));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                results.Add(new(entry, false, "Loi: " + SyncExecutor.FriendlyError(ex)));
+            }
+        }
+        return results;
+    }
+
     /// <summary>Khoi phuc 1 ban trong history ve vi tri goc. Tra ve duong dan dich.</summary>
     public static string Restore(string root, HistoryEntry entry)
     {
@@ -72,28 +138,34 @@ public static class HistoryService
         // roi moi sao luu file dich hien tai. Neu sao luu truoc va thu muc history trung ten,
         // chinh file dang khoi phuc co the bi ghi de boi ban sao luu.
         var tmpFull = destFull + ".tmp-sync";
-        File.Copy(entry.FullPath, tmpFull, overwrite: true);
-        if (new FileInfo(tmpFull).Length != entry.Size)
+        try
         {
-            File.Delete(tmpFull);
-            throw new IOException("Kiem chung that bai khi khoi phuc (lech kich thuoc)");
-        }
+            File.Copy(entry.FullPath, tmpFull, overwrite: true);
+            if (new FileInfo(tmpFull).Length != entry.Size)
+                throw new IOException("Kiem chung that bai khi khoi phuc (lech kich thuoc)");
 
-        // Neu dang co file o dich, giu lai no vao history truoc (khong mat du lieu khi khoi phuc nham)
-        if (File.Exists(destFull))
-        {
-            var backupStamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
-            var backupPath = Path.Combine(root, HistoryFolderName, backupStamp,
-                entry.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-            // Phong thu: khong bao gio ghi de len chinh ban dang khoi phuc
-            if (!string.Equals(backupPath, entry.FullPath, StringComparison.OrdinalIgnoreCase))
+            // Neu dang co file o dich, giu lai no vao history truoc (khong mat du lieu khi khoi phuc nham)
+            if (File.Exists(destFull))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
-                File.Copy(destFull, backupPath, overwrite: true);
+                var backupStamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
+                var backupPath = Path.Combine(root, HistoryFolderName, backupStamp,
+                    entry.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                // Phong thu: khong bao gio ghi de len chinh ban dang khoi phuc
+                if (!string.Equals(backupPath, entry.FullPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+                    File.Copy(destFull, backupPath, overwrite: true);
+                }
             }
-        }
 
-        File.Move(tmpFull, destFull, overwrite: true);
+            File.Move(tmpFull, destFull, overwrite: true);
+        }
+        catch
+        {
+            // Nhu SyncExecutor: loi o bat ky buoc nao -> khong de lai file tam chiem cho
+            try { if (File.Exists(tmpFull)) File.Delete(tmpFull); } catch (Exception) { }
+            throw;
+        }
         File.SetLastWriteTimeUtc(destFull, entry.FileMtimeUtc);
         return destFull;
     }

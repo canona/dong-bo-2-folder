@@ -3,6 +3,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- WinForms chi de dung NotifyIcon (icon khay he thong) - WPF khong co san -->
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!-- Cho phep build kiem chung tren may khong phai Windows (CI/Linux) -->
@@ -11,6 +13,11 @@
          chi ap dung khi da sinh file (ban build tren may Windows sau khi giai ma) -->
     <ApplicationIcon Condition="Exists('Assets\foldersync.ico')">Assets\foldersync.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Bo global using cua WinForms: trung ten voi WPF (Application, MessageBox, Brush...) -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FolderSync.Core\FolderSync.Core.csproj" />
   </ItemGroup>

@@ -8,4 +8,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Harness thay the cach do cho trong o dia (SyncExecutor.FreeSpaceProbe) de test "het cho" -->
+    <InternalsVisibleTo Include="FolderSync.Core.Harness" />
+  </ItemGroup>
 </Project>

@@ -1,32 +1,72 @@
 <Window x:Class="FolderSync.App.HistoryWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Lich su va khoi phuc file" Height="440" Width="760" WindowStartupLocation="CenterOwner"
+        Title="Lich su va khoi phuc file" Height="520" Width="900" WindowStartupLocation="CenterOwner"
         Background="{StaticResource PageBgBrush}">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+        <DockPanel Grid.Row="0" Margin="0,0,0,6">
             <TextBlock Text="Xem lich su o:" VerticalAlignment="Center" Margin="0,0,8,0"/>
             <ComboBox x:Name="SideBox" Width="150" SelectionChanged="SideBox_SelectionChanged">
                 <ComboBoxItem Content="Folder Trai" Tag="Left" IsSelected="True"/>
                 <ComboBoxItem Content="Folder Phai" Tag="Right"/>
             </ComboBox>
-            <TextBlock Text="Cac file bi xoa/ghi de duoc giu trong .foldersync_history" Margin="12,0,0,0" VerticalAlignment="Center"/>
-        </StackPanel>
-        <DataGrid Grid.Row="1" x:Name="HistoryGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False">
+            <CheckBox x:Name="HideRestoredCheck" Content="An file da khoi phuc" Margin="16,0,0,0"
+                      VerticalAlignment="Center" Checked="HideRestored_Changed" Unchecked="HideRestored_Changed"/>
+            <TextBlock x:Name="CountText" HorizontalAlignment="Right" VerticalAlignment="Center"
+                       Foreground="{StaticResource MutedTextBrush}"/>
+        </DockPanel>
+        <!-- Canh bao: khoi phuc vao folder DICH cua Job 1 chieu dang dong bo lien tuc se bi chep de lai -->
+        <Border Grid.Row="1" x:Name="WarningBox" Visibility="Collapsed" Background="#FFFBEB" BorderBrush="#F59E0B"
+                BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,0,0,6">
+            <TextBlock x:Name="WarningText" TextWrapping="Wrap" Foreground="#92400E"/>
+        </Border>
+        <!-- Chon nhieu dong bang Ctrl/Shift; dong da khoi phuc bi mo, khong chon duoc -->
+        <DataGrid Grid.Row="2" x:Name="HistoryGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                  SelectionMode="Extended" SelectionUnit="FullRow" HeadersVisibility="Column"
+                  SelectionChanged="HistoryGrid_SelectionChanged" GridLinesVisibility="Horizontal"
+                  HorizontalGridLinesBrush="#EEF2F6">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="IsEnabled" Value="{Binding CanRestore}"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding CanRestore}" Value="False">
+                            <Setter Property="Foreground" Value="#94A3B8"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Thoi diem luu" Binding="{Binding Stamp}" Width="130"/>
+                <DataGridTextColumn Header="Thoi diem luu" Binding="{Binding StampText}" Width="150"/>
                 <DataGridTextColumn Header="Duong dan goc" Binding="{Binding RelativePath}" Width="*"/>
-                <DataGridTextColumn Header="Kich thuoc (byte)" Binding="{Binding Size}" Width="120"/>
+                <DataGridTextColumn Header="Kich thuoc" Binding="{Binding SizeText}" Width="90">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock"><Setter Property="TextAlignment" Value="Right"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTemplateColumn Header="Trang thai" Width="250">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}"
+                                       FontWeight="{Binding StatusWeight}" Margin="4,0" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding StatusText}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-            <Button Content="Khoi phuc file da chon" Padding="14,6" Margin="0,0,8,0" Click="Restore_Click"/>
-            <Button Content="Dong" Padding="14,6" Click="Close_Click"/>
-        </StackPanel>
+        <DockPanel Grid.Row="3" Margin="0,8,0,0">
+            <Button DockPanel.Dock="Right" Content="Dong" Padding="14,6" Click="Close_Click"/>
+            <Button DockPanel.Dock="Right" x:Name="RestoreButton" Content="Khoi phuc file da chon" Padding="14,6"
+                    Margin="0,0,8,0" IsEnabled="False" Click="Restore_Click"/>
+            <Button DockPanel.Dock="Left" Content="Chon tat ca file chua khoi phuc" Padding="10,6" Click="SelectAllRestorable_Click"/>
+            <TextBlock Text="  Giu Ctrl/Shift de chon nhieu file." VerticalAlignment="Center"
+                       Foreground="{StaticResource MutedTextBrush}"/>
+        </DockPanel>
     </Grid>
 </Window>

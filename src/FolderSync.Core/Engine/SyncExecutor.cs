@@ -18,7 +18,9 @@ public sealed record SyncOptions(
     /// <summary>Tab Advanced cua Job Options: copy ca thoi gian tao file (creation time) sang dich.</summary>
     bool CopyCreationTime = false,
     /// <summary>Tab Advanced: copy thuoc tinh file (tru ReadOnly - tranh file dich bi khoa ghi de o lan sau).</summary>
-    bool CopyAttributes = false);
+    bool CopyAttributes = false,
+    /// <summary>Gioi han toc do chep (byte/giay) cho CA lan chay; 0 = khong gioi han. Xem BandwidthThrottle.</summary>
+    long MaxBytesPerSecond = 0);
 
 public sealed class SyncResult
 {
@@ -30,12 +32,26 @@ public sealed class SyncResult
     public List<string> Errors { get; } = new();
     public bool Aborted { get; internal set; }
     public string? AbortReason { get; internal set; }
+    /// <summary>Nguoi dung bam Huy giua chung (dung truoc file tiep theo; file dang chep do bi bo).</summary>
+    public bool Canceled { get; internal set; }
+
+    /// <summary>
+    /// Hash da biet sau khi chep (tinh ngay trong luc chep) cua file nguon + file dich, kem size/mtime THAT
+    /// sau khi ghi -> dua vao cache hash: lan quet sau va state khong phai doc lai noi dung.
+    /// </summary>
+    public List<(bool Left, FileEntry Entry)> KnownHashes { get; } = new();
 }
 
-public enum SyncProgressStage { Planned, Started, Completed, Failed }
+public enum SyncProgressStage { Scanning, Hashing, Planned, Started, Bytes, Verifying, Completed, Failed }
 
 /// <summary>
-/// Tien trinh dong bo cho UI. Planned: Plan = danh sach hanh dong se chay (Index/Action khong dung).
+/// Tien trinh dong bo cho UI.
+/// Scanning: dang quet (BytesDone = so file da quet, Message = "Trai/Phai: thu muc").
+/// Hashing: dang so noi dung file cung size khac mtime (BytesDone/BytesTotal = byte, Message = file).
+/// Planned: Plan = danh sach hanh dong se chay (Index/Action khong dung),
+/// BytesTotal = tong so byte can copy cua ca Job.
+/// Bytes: dang copy - BytesDone/BytesTotal cua FILE hien tai (bao toi da ~10 lan/giay).
+/// Verifying: da chep xong, dang kiem chung hash file tam.
 /// Started/Completed/Failed: Index la vi tri trong Plan; Destination = duong dan day du noi file duoc ghi
 /// (copy/doi ten) hoac noi ban cu bi doi vao history (xoa).
 /// </summary>
@@ -46,7 +62,12 @@ public sealed record SyncProgress(
     SyncAction? Action,
     string? Destination = null,
     string? Error = null,
-    IReadOnlyList<SyncAction>? Plan = null)
+    IReadOnlyList<SyncAction>? Plan = null,
+    long BytesDone = 0,
+    long BytesTotal = 0,
+    string? Message = null,
+    IReadOnlyDictionary<string, FileEntry>? ScanLeft = null,
+    IReadOnlyDictionary<string, FileEntry>? ScanRight = null)
 {
     public DateTime TimeLocal { get; } = DateTime.Now;
 }
@@ -84,9 +105,11 @@ public sealed class SyncExecutor
     /// hien co o 2 phia neu chua co state (lan chay dau).</param>
     /// <param name="progress">Bao Started/Completed/Failed cho tung hanh dong (tru Skip/Conflict).</param>
     public SyncResult Execute(IReadOnlyList<SyncAction> actions, int baselineFileCount,
-        IProgress<SyncProgress>? progress = null)
+        IProgress<SyncProgress>? progress = null, CancellationToken ct = default)
     {
         var result = new SyncResult();
+        // 1 bo dieu toc cho ca lan chay (gioi han tinh chung moi file, khong reset theo tung file)
+        _throttle = _options.MaxBytesPerSecond > 0 ? new BandwidthThrottle(_options.MaxBytesPerSecond) : null;
 
         // --- Chot an toan xoa hang loat: kiem tra truoc khi thuc thi bat ky lenh nao ---
         var deletes = actions.Count(a => a.Kind is SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight);
@@ -106,6 +129,7 @@ public sealed class SyncExecutor
 
         for (int i = 0; i < actions.Count; i++)
         {
+            if (ct.IsCancellationRequested) { result.Canceled = true; break; }
             var action = actions[i];
             bool silent = action.Kind is SyncActionKind.Skip or SyncActionKind.Conflict;
             if (!silent) progress?.Report(new SyncProgress(SyncProgressStage.Started, i, actions.Count, action));
@@ -117,14 +141,16 @@ public sealed class SyncExecutor
                     case SyncActionKind.CopyLeftToRight:
                         // TargetPath (neu co) la duong dan dich khac duong dan nguon - dung cho ban "conflict copy"
                         destination = Full(_rightRoot, action.TargetPath ?? action.RelativePath);
-                        AtomicCopy(Full(_leftRoot, action.RelativePath), destination,
-                                   _rightRoot, action.TargetPath ?? action.RelativePath);
+                        var hashLR = AtomicCopy(Full(_leftRoot, action.RelativePath), destination,
+                                   _rightRoot, action.TargetPath ?? action.RelativePath, ReporterFor(progress, i, actions), ct);
+                        Remember(result, true, action.RelativePath, false, action.TargetPath ?? action.RelativePath, hashLR);
                         result.Copied++;
                         break;
                     case SyncActionKind.CopyRightToLeft:
                         destination = Full(_leftRoot, action.TargetPath ?? action.RelativePath);
-                        AtomicCopy(Full(_rightRoot, action.RelativePath), destination,
-                                   _leftRoot, action.TargetPath ?? action.RelativePath);
+                        var hashRL = AtomicCopy(Full(_rightRoot, action.RelativePath), destination,
+                                   _leftRoot, action.TargetPath ?? action.RelativePath, ReporterFor(progress, i, actions), ct);
+                        Remember(result, false, action.RelativePath, true, action.TargetPath ?? action.RelativePath, hashRL);
                         result.Copied++;
                         break;
                     case SyncActionKind.DeleteLeft:
@@ -153,10 +179,18 @@ public sealed class SyncExecutor
                 if (!silent)
                     progress?.Report(new SyncProgress(SyncProgressStage.Completed, i, actions.Count, action, destination));
             }
+            catch (OperationCanceledException)
+            {
+                // Huy giua luc chep: AtomicCopy da xoa file tam; dung han, khong chay tiep
+                result.Canceled = true;
+                progress?.Report(new SyncProgress(SyncProgressStage.Failed, i, actions.Count, action, destination, "Da huy theo yeu cau"));
+                break;
+            }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                result.Errors.Add($"{action.Kind} {action.RelativePath}: {ex.Message}");
-                progress?.Report(new SyncProgress(SyncProgressStage.Failed, i, actions.Count, action, destination, ex.Message));
+                var message = FriendlyError(ex);
+                result.Errors.Add($"{action.Kind} {action.RelativePath}: {message}");
+                progress?.Report(new SyncProgress(SyncProgressStage.Failed, i, actions.Count, action, destination, message));
             }
         }
 
@@ -165,33 +199,168 @@ public sealed class SyncExecutor
         return result;
     }
 
-    private void AtomicCopy(string sourceFull, string destFull, string destRoot, string rel)
+    /// <summary>Ghi lai hash vua tinh cua ca file nguon va file dich (size/mtime doc lai SAU khi ghi).</summary>
+    private void Remember(SyncResult result, bool srcLeft, string srcRel, bool dstLeft, string dstRel, string hash)
+    {
+        try
+        {
+            var src = new FileInfo(Full(srcLeft ? _leftRoot : _rightRoot, srcRel));
+            var dst = new FileInfo(Full(dstLeft ? _leftRoot : _rightRoot, dstRel));
+            result.KnownHashes.Add((srcLeft, new FileEntry(srcRel, src.Length, src.LastWriteTimeUtc, hash)));
+            result.KnownHashes.Add((dstLeft, new FileEntry(dstRel, dst.Length, dst.LastWriteTimeUtc, hash)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* chi la cache */ }
+    }
+
+    /// <summary>Callback bao tien trinh byte cua 1 file: (stage Bytes/Verifying, da chep, tong).</summary>
+    private delegate void CopyReporter(SyncProgressStage stage, long done, long total);
+
+    private static CopyReporter? ReporterFor(IProgress<SyncProgress>? progress, int index, IReadOnlyList<SyncAction> actions)
+        => progress is null ? null
+           : (stage, done, total) => progress.Report(new SyncProgress(stage, index, actions.Count, actions[index],
+               BytesDone: done, BytesTotal: total));
+
+    private const int CopyBufferSize = 1024 * 1024;
+    private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(100);
+
+    /// <returns>SHA-256 cua noi dung da chep.</returns>
+    private BandwidthThrottle? _throttle;
+
+    private string AtomicCopy(string sourceFull, string destFull, string destRoot, string rel,
+        CopyReporter? report = null, CancellationToken ct = default)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destFull)!);
         var tmpFull = destFull + ".tmp-sync";
 
-        using (var src = new FileStream(sourceFull, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-        using (var dst = new FileStream(tmpFull, FileMode.Create, FileAccess.Write, FileShare.None))
+        // Moc cua nguon truoc khi chep - neu nguon bi sua trong luc copy thi ban chep la ban "lai"
+        var srcInfo = new FileInfo(sourceFull);
+        long total = srcInfo.Length;
+        var mtimeBefore = srcInfo.LastWriteTimeUtc;
+
+        // Khong du cho thi bao loi NGAY, khong ghi gi: chep do roi moi het cho vua mat thoi gian
+        // vua de lai file tam chiem cho (USB FAT32 day tung bi nhu vay).
+        if (FreeSpaceProbe(destFull) is { } free && free < total + DiskReserveBytes)
+            throw new DiskFullException(rel, total, free);
+
+        string hash;
+        try
         {
-            src.CopyTo(dst, 81920);
+            hash = CopyAndVerify(sourceFull, tmpFull, rel, srcInfo, total, mtimeBefore, report, ct);
+            if (File.Exists(destFull)) PreserveExisting(destFull, destRoot, rel);
+            File.Move(tmpFull, destFull, overwrite: true);
+        }
+        catch
+        {
+            // Loi o BAT KY buoc nao (het cho, rut USB, nguon doi, dich bi khoa / trung ten thu muc...)
+            // -> xoa file tam do dang. Scanner bo qua *.tmp-sync nen neu de lai, no nam do chiem cho mai mai.
+            try { if (File.Exists(tmpFull)) File.Delete(tmpFull); } catch (Exception) { /* o da mat - bo qua */ }
+            throw;
+        }
+        FinishCopiedFile(destFull, srcInfo);
+        return hash;
+    }
+
+    /// <summary>Chua lai it nhat 1 MB tren o dich (FAT32 / he thong can cho cho bang file).</summary>
+    private const long DiskReserveBytes = 1024 * 1024;
+
+    /// <summary>Do cho trong cua o chua duong dan; null = khong do duoc (UNC, o mang...) -> bo qua kiem tra.
+    /// Harness thay the de gia lap het cho.</summary>
+    internal static Func<string, long?> FreeSpaceProbe { get; set; } = DefaultFreeSpace;
+
+    public static long? DefaultFreeSpace(string path)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(path));
+            if (string.IsNullOrEmpty(root) || root.StartsWith(@"\\", StringComparison.Ordinal)) return null;
+            var drive = new DriveInfo(root);
+            return drive.IsReady ? drive.AvailableFreeSpace : null;
+        }
+        catch (Exception) { return null; }
+    }
+
+    /// <summary>Loi het cho tren o dich - thong bao ro can bao nhieu, con bao nhieu.</summary>
+    public sealed class DiskFullException(string rel, long needed, long free)
+        : IOException($"Khong du cho trong o dich: can {FormatBytes(needed)}, chi con {FormatBytes(free)} ({rel})");
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        double v = bytes; string[] u = { "KB", "MB", "GB", "TB" }; int i = -1;
+        do { v /= 1024; i++; } while (v >= 1024 && i < u.Length - 1);
+        return $"{v:0.##} {u[i]}";
+    }
+
+    /// <summary>Doi loi he thong thanh thong bao tieng Viet de hieu cho cac loi hay gap.</summary>
+    internal static string FriendlyError(Exception ex) => ex switch
+    {
+        DiskFullException => ex.Message,
+        IOException when (ex.HResult & 0xFFFF) is 0x70 or 0x27 => "Khong du cho trong o dich (o da day)",
+        IOException when (ex.HResult & 0xFFFF) is 0x20 or 0x21 => "File dang bi chuong trinh khac mo/khoa",
+        IOException when (ex.HResult & 0xFFFF) is 0x15 or 0x37 or 0x3 => "O dia/thu muc khong san sang (USB bi rut?)",
+        UnauthorizedAccessException => "Khong co quyen ghi/doc (file chi doc hoac thieu quyen)",
+        _ => ex.Message
+    };
+
+    private string CopyAndVerify(string sourceFull, string tmpFull, string rel, FileInfo srcInfo, long total,
+        DateTime mtimeBefore, CopyReporter? report, CancellationToken ct)
+    {
+
+        // Hash nguon NGAY TRONG LUC chep (doc nguon 1 lan thay vi 2) - nhanh gap doi voi file lon
+        string srcHash;
+        using (var hasher = System.Security.Cryptography.IncrementalHash.CreateHash(
+                   System.Security.Cryptography.HashAlgorithmName.SHA256))
+        using (var src = new FileStream(sourceFull, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, CopyBufferSize))
+        using (var dst = new FileStream(tmpFull, FileMode.Create, FileAccess.Write, FileShare.None, CopyBufferSize))
+        {
+            // Bi gioi han toc do: khoi nho hon (~1/10 giay du lieu) de tien trinh/toc do hien muot
+            var buffer = new byte[_throttle?.ChunkSize ?? CopyBufferSize];
+            long done = 0;
+            var lastReport = DateTime.UtcNow;
+            report?.Invoke(SyncProgressStage.Bytes, 0, total);
+            int read;
+            while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                ct.ThrowIfCancellationRequested(); // AtomicCopy bat va xoa file tam
+                hasher.AppendData(buffer, 0, read);
+                dst.Write(buffer, 0, read);
+                // Chi chen thoi gian cho vao vong ghi FILE TAM - thu tu copy nguyen tu khong doi;
+                // huy trong luc cho -> OperationCanceledException -> AtomicCopy xoa file tam
+                _throttle?.Consume(read, ct);
+                done += read;
+                if (report is not null && DateTime.UtcNow - lastReport >= ReportInterval)
+                {
+                    report(SyncProgressStage.Bytes, done, total);
+                    lastReport = DateTime.UtcNow;
+                }
+            }
+            report?.Invoke(SyncProgressStage.Bytes, done, total);
+            srcHash = Convert.ToHexString(hasher.GetHashAndReset());
         }
 
-        // Kiem chung toan ven file tam truoc khi de len dich
-        var srcInfo = new FileInfo(sourceFull);
-        if (new FileInfo(tmpFull).Length != srcInfo.Length)
+        // Kiem chung: nguon khong doi trong luc chep + file tam dung kich thuoc va hash
+        srcInfo.Refresh();
+        if (srcInfo.Length != total || srcInfo.LastWriteTimeUtc != mtimeBefore)
+        {
+            File.Delete(tmpFull);
+            throw new IOException($"File nguon bi thay doi trong luc copy {rel} - se chep lai o lan sau");
+        }
+        if (new FileInfo(tmpFull).Length != total)
         {
             File.Delete(tmpFull);
             throw new IOException($"Kiem chung that bai (lech kich thuoc) khi copy {rel}");
         }
-        var srcHash = FileHasher.ComputeHash(sourceFull);
+        report?.Invoke(SyncProgressStage.Verifying, total, total);
         if (!FileHasher.Verify(tmpFull, srcHash))
         {
             File.Delete(tmpFull);
             throw new IOException($"Kiem chung that bai (lech hash) khi copy {rel}");
         }
+        return srcHash;
+    }
 
-        if (File.Exists(destFull)) PreserveExisting(destFull, destRoot, rel);
-        File.Move(tmpFull, destFull, overwrite: true);
+    private void FinishCopiedFile(string destFull, FileInfo srcInfo)
+    {
         // Giu nguyen mtime cua nguon - day la tin hieu phat hien thay doi o lan quet sau
         File.SetLastWriteTimeUtc(destFull, srcInfo.LastWriteTimeUtc);
         if (_options.CopyCreationTime)

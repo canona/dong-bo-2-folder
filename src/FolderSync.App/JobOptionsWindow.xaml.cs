@@ -74,6 +74,8 @@ public partial class JobOptionsWindow : Window
         CopyAttributesCheck.IsChecked = options.CopyAttributes;
         DetectRenamesCheck.IsChecked = options.DetectRenames;
         CompareChecksumsCheck.IsChecked = options.CompareChecksums;
+        FullContentCheck.IsChecked = options.FullContentCompare;
+        SetSpeedLimit(options.MaxCopySpeedMBps);
 
         LeftToleranceBox.Text = options.LeftToleranceSec.ToString();
         RightToleranceBox.Text = options.RightToleranceSec.ToString();
@@ -98,6 +100,10 @@ public partial class JobOptionsWindow : Window
 
     private void TabList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // ListBoxItem dau tien co IsSelected="True" nen su kien ban ngay TRONG InitializeComponent,
+        // luc cac panel khai bao phia duoi chua duoc tao (null) -> crash khi mo hop Them/Sua Job.
+        // XAML da de san PanelGeneral hien, cac panel khac an - dung trang thai tab 0.
+        if (PanelRight is null) return;
         var panels = new[] { PanelGeneral, PanelFilters, PanelAuto, PanelScripts, PanelAdvanced, PanelLeft, PanelRight };
         for (int i = 0; i < panels.Length; i++)
             panels[i].Visibility = i == TabList.SelectedIndex ? Visibility.Visible : Visibility.Collapsed;
@@ -113,6 +119,49 @@ public partial class JobOptionsWindow : Window
         var dlg = new OpenFolderDialog { Title = "Chon folder" };
         if (Directory.Exists(target.Text)) dlg.InitialDirectory = target.Text;
         if (dlg.ShowDialog() == true) target.Text = dlg.FolderName;
+    }
+
+    // ---------- Gioi han toc do chep ----------
+
+    private const int MaxSpeedMBps = 10_000;
+    private int _speedLimit;
+    private bool _syncingSpeed; // dang dong bo slider <-> o so: chan vong lap su kien
+
+    private static int ParseSpeed(string text, int fallback)
+        => int.TryParse(text.Trim(), out var v) ? Math.Clamp(v, 0, MaxSpeedMBps) : fallback;
+
+    /// <summary>Gia tri goc la _speedLimit; slider (toi da 200) va o so (toi da 10.000) chi la 2 cach nhap.</summary>
+    private void SetSpeedLimit(int mbps)
+    {
+        _speedLimit = Math.Clamp(mbps, 0, MaxSpeedMBps);
+        _syncingSpeed = true;
+        try
+        {
+            SpeedLimitSlider.Value = Math.Min(_speedLimit, SpeedLimitSlider.Maximum);
+            SpeedLimitBox.Text = _speedLimit.ToString();
+        }
+        finally { _syncingSpeed = false; }
+        SpeedLimitHint.Text = _speedLimit == 0
+            ? "Khong gioi han - chep nhanh nhat co the."
+            : $"Toi da {_speedLimit} MB/s cho Job nay (tinh chung moi file). Vi du 1 GB mat khoang {FormatDuration(1024.0 / _speedLimit)}.";
+    }
+
+    private static string FormatDuration(double seconds)
+        => seconds < 60 ? $"{seconds:0} giay" : $"{(int)(seconds / 60)} phut {(int)(seconds % 60)} giay";
+
+    private void SpeedLimitSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // Ban trong InitializeComponent (Minimum/Maximum) khi o so va dong goi y chua duoc tao
+        if (_syncingSpeed || SpeedLimitBox is null || SpeedLimitHint is null) return;
+        SetSpeedLimit((int)Math.Round(e.NewValue));
+    }
+
+    private void SpeedLimitBox_LostFocus(object sender, RoutedEventArgs e)
+        => SetSpeedLimit(ParseSpeed(SpeedLimitBox.Text, _speedLimit));
+
+    private void SpeedLimitBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) SetSpeedLimit(ParseSpeed(SpeedLimitBox.Text, _speedLimit));
     }
 
     private static int ParseInt(TextBox box, int fallback)
@@ -149,6 +198,9 @@ public partial class JobOptionsWindow : Window
             CopyAttributes = CopyAttributesCheck.IsChecked == true,
             DetectRenames = DetectRenamesCheck.IsChecked == true,
             CompareChecksums = CompareChecksumsCheck.IsChecked == true,
+            FullContentCompare = FullContentCheck.IsChecked == true,
+            // Doc lai o so: bam Luu ngay sau khi go (chua roi o) van lay dung gia tri
+            MaxCopySpeedMBps = ParseSpeed(SpeedLimitBox.Text, _speedLimit),
             LeftToleranceSec = ParseInt(LeftToleranceBox, 2),
             RightToleranceSec = ParseInt(RightToleranceBox, 2)
         };

@@ -26,7 +26,15 @@ public sealed class FolderScanner
 
     public FolderScanner(SyncFilter? filter = null) => _filter = filter ?? new SyncFilter();
 
-    public ScanResult Scan(string root, bool computeHashes = false)
+    /// <param name="computeHashes">true = hash MOI file (cham, doc toan bo noi dung - chi dung khi that can).
+    /// false = khong hash; van gan hash tu <paramref name="hashCache"/> neu file khop.</param>
+    /// <param name="hashCache">Ket qua quet truoc cua CHINH folder nay: file cung size + mtime (chinh xac
+    /// tung tick) thi dung lai hash cu thay vi doc lai ca file. Gioi han: file bi sua ma giu nguyen
+    /// size + mtime se khong bi phat hien.</param>
+    /// <param name="onProgress">(so file da quet, thu muc dang quet) - bao toi da ~6 lan/giay.</param>
+    public ScanResult Scan(string root, bool computeHashes = false,
+        IReadOnlyDictionary<string, FileEntry>? hashCache = null,
+        Action<int, string>? onProgress = null, CancellationToken ct = default)
     {
         var entries = new Dictionary<string, FileEntry>(StringComparer.OrdinalIgnoreCase);
         var errors = new List<string>();
@@ -41,15 +49,24 @@ public sealed class FolderScanner
 
         var pending = new Stack<string>();
         pending.Push(root);
+        var lastReport = DateTime.UtcNow;
 
         while (pending.Count > 0)
         {
+            ct.ThrowIfCancellationRequested();
             var dir = pending.Pop();
-            string[] subDirs, files;
+            if (onProgress is not null && DateTime.UtcNow - lastReport > ReportInterval)
+            {
+                onProgress(entries.Count, Normalize(Path.GetRelativePath(root, dir)));
+                lastReport = DateTime.UtcNow;
+            }
+
+            // 1 lan liet ke thu muc tra luon size/mtime/thuoc tinh (FindFirstFile) - KHONG goi them
+            // FileInfo/GetAttributes tung file: tren USB / o mang moi lan goi them la 1 vong I/O cham.
+            List<FileSystemInfo> items;
             try
             {
-                subDirs = Directory.GetDirectories(dir);
-                files = Directory.GetFiles(dir);
+                items = new DirectoryInfo(dir).EnumerateFileSystemInfos().ToList();
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
@@ -58,34 +75,34 @@ public sealed class FolderScanner
                 continue;
             }
 
-            foreach (var sub in subDirs)
+            foreach (var item in items)
             {
+                var rel = Normalize(Path.GetRelativePath(root, item.FullName));
                 try
                 {
-                    if ((File.GetAttributes(sub) & FileAttributes.ReparsePoint) != 0) { skippedLinks++; continue; }
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    errors.Add($"Khong kiem tra duoc {sub}: {ex.Message}");
-                    failed.Add(Normalize(Path.GetRelativePath(root, sub)));
-                    continue;
-                }
-                // Thu muc bi loc (vd .git, .foldersync_history) thi khong di vao
-                if (_filter.IsDirectoryIncluded(Normalize(Path.GetRelativePath(root, sub)))) pending.Push(sub);
-            }
+                    var attrs = item.Attributes;
+                    if (item is DirectoryInfo)
+                    {
+                        if ((attrs & FileAttributes.ReparsePoint) != 0) { skippedLinks++; continue; }
+                        // Thu muc bi loc (vd .git, .foldersync_history) thi khong di vao
+                        if (_filter.IsDirectoryIncluded(rel)) pending.Push(item.FullName);
+                        continue;
+                    }
 
-            foreach (var file in files)
-            {
-                var rel = Normalize(Path.GetRelativePath(root, file));
-                if (!_filter.IsIncluded(rel)) continue;
-                try
-                {
-                    var info = new FileInfo(file);
-                    if ((info.Attributes & FileAttributes.ReparsePoint) != 0) { skippedLinks++; continue; }
-                    if (_filter.ExcludeHidden && (info.Attributes & FileAttributes.Hidden) != 0) continue;
-                    if (_filter.ExcludeSystem && (info.Attributes & FileAttributes.System) != 0) continue;
-                    string? hash = computeHashes ? FileHasher.ComputeHash(file) : null;
-                    entries[rel] = new FileEntry(rel, info.Length, info.LastWriteTimeUtc, hash);
+                    if (!_filter.IsIncluded(rel)) continue;
+                    if ((attrs & FileAttributes.ReparsePoint) != 0) { skippedLinks++; continue; }
+                    if (_filter.ExcludeHidden && (attrs & FileAttributes.Hidden) != 0) continue;
+                    if (_filter.ExcludeSystem && (attrs & FileAttributes.System) != 0) continue;
+
+                    var info = (FileInfo)item;
+                    long size = info.Length;
+                    var mtime = info.LastWriteTimeUtc;
+                    string? hash = hashCache is not null && hashCache.TryGetValue(rel, out var cached)
+                                   && cached.Hash is not null && cached.Size == size && cached.MtimeUtc == mtime
+                        ? cached.Hash
+                        : null;
+                    if (hash is null && computeHashes) hash = FileHasher.ComputeHash(item.FullName, ct);
+                    entries[rel] = new FileEntry(rel, size, mtime, hash);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -95,8 +112,11 @@ public sealed class FolderScanner
             }
         }
 
+        onProgress?.Invoke(entries.Count, "");
         return new ScanResult(entries, errors, skippedLinks, failed);
     }
+
+    private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(150);
 
     internal static string Normalize(string relativePath)
         => relativePath.Replace('\\', '/');

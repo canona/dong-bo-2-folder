@@ -60,10 +60,27 @@ var p1 = P1Tests.Run();
 pass += p1.pass; fail += p1.fail;
 var p2 = P2Tests.Run();
 pass += p2.pass; fail += p2.fail;
+var runTests = JobRunnerTests.Run();
+pass += runTests.pass; fail += runTests.fail;
 var safe = SafetyTests.Run();
 pass += safe.pass; fail += safe.fail;
 var opt = OptionsTests.Run();
 pass += opt.pass; fail += opt.fail;
+var perf = PerfTests.Run();
+pass += perf.pass; fail += perf.fail;
+var bw = BandwidthTests.Run();
+pass += bw.pass; fail += bw.fail;
+
+// Don thu muc tam cua moi test (tien to "foldersync-") - khong don thi moi lan chay de lai hang tram MB
+// trong %TEMP% va tung lam DAY O C: (SQLite bao "database or disk is full").
+Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); // nha file .db dang bi pool giu
+int cleaned = 0, locked = 0;
+foreach (var dir in Directory.GetDirectories(Path.GetTempPath(), "foldersync-*"))
+{
+    try { Directory.Delete(dir, recursive: true); cleaned++; }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { locked++; }
+}
+Console.WriteLine($"\nDa don {cleaned} thu muc tam" + (locked > 0 ? $" ({locked} dang bi khoa, de lan sau)" : ""));
 
 Console.WriteLine($"\nTONG: {pass} PASS, {fail} FAIL");
 return fail == 0 ? 0 : 1;

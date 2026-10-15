@@ -30,6 +30,9 @@ public static class SafetyTests
         File.WriteAllText(full, content);
     }
 
+    private static string? Read(string root, string rel)
+        => File.Exists(Full(root, rel)) ? File.ReadAllText(Full(root, rel)) : null;
+
     private static int CountFiles(string root) => new FolderScanner().Scan(root).Entries.Count;
 
     // Ten file thuc te tren dia (dung hoa/thuong), khong qua so sanh khong phan biet
@@ -98,6 +101,10 @@ public static class SafetyTests
             var session = new SyncSession("j", left, right, SyncMode.TwoWay, store);
             session.Run();
 
+            // Doi mtime (giu nguyen noi dung + size) -> engine PHAI doc noi dung de biet co doi that khong;
+            // file dang bi khoa -> khong doc duoc -> khong duoc coi la da xoa / da doi.
+            // (Scanner chi doc metadata nen file khoa ma khong can so noi dung thi van duoc liet ke binh thuong.)
+            File.SetLastWriteTimeUtc(Full(left, "khoa.txt"), DateTime.UtcNow.AddMinutes(5));
             SessionOutcome o;
             using (new FileStream(Full(left, "khoa.txt"), FileMode.Open, FileAccess.Read, FileShare.None))
                 o = session.Run();
@@ -179,7 +186,8 @@ public static class SafetyTests
             new SyncSession("j", left, right, SyncMode.TwoWay, store).Run(new CollectProgress(events));
             var completed = events.Where(e => e.Stage == SyncProgressStage.Completed).ToList();
             Check("Tien trinh: Planned dau tien, 2 Started + 2 Completed",
-                events.FirstOrDefault()?.Stage == SyncProgressStage.Planned
+                events.FirstOrDefault(e => e.Stage is not (SyncProgressStage.Scanning or SyncProgressStage.Hashing))?.Stage == SyncProgressStage.Planned
+                && events.Any(e => e.Stage == SyncProgressStage.Scanning)
                 && events.Count(e => e.Stage == SyncProgressStage.Started) == 2 && completed.Count == 2,
                 string.Join(",", events.Select(e => e.Stage)));
             Check("Tien trinh: Destination la file that o Phai",
@@ -187,7 +195,139 @@ public static class SafetyTests
                 string.Join(";", completed.Select(e => e.Destination)));
         }
 
+        // 10. Tien trinh theo byte: Planned co tong byte, moi file co Bytes cuoi = 100% roi Verifying
+        {
+            var left = NewTempDir("p10-l"); var right = NewTempDir("p10-r");
+            File.WriteAllBytes(Full(left, "lon.bin"), new byte[3 * 1024 * 1024 + 123]);
+            Write(left, "nho.txt", "abc");
+            using var store = NewStore("p10");
+            var events = new List<SyncProgress>();
+            new SyncSession("j", left, right, SyncMode.MirrorOneWay, store).Run(new CollectProgress(events));
+            long expected = 3 * 1024 * 1024 + 123 + 3;
+            var bytes = events.Where(e => e.Stage == SyncProgressStage.Bytes && e.Action!.RelativePath == "lon.bin").ToList();
+            Check("Tien trinh byte: Planned.BytesTotal = tong dung luong can chep",
+                events.First(e => e.Stage == SyncProgressStage.Planned).BytesTotal == expected,
+                $"{events.First(e => e.Stage == SyncProgressStage.Planned).BytesTotal} != {expected}");
+            Check("Tien trinh byte: file lon co Bytes tang dan, ket thuc o 100%",
+                bytes.Count >= 2 && bytes[0].BytesDone == 0 && bytes[^1].BytesDone == bytes[^1].BytesTotal
+                && bytes.Zip(bytes.Skip(1)).All(x => x.First.BytesDone <= x.Second.BytesDone),
+                string.Join(",", bytes.Select(b => b.BytesDone)));
+            Check("Tien trinh byte: co buoc Verifying truoc Completed, noi dung dich dung",
+                events.Any(e => e.Stage == SyncProgressStage.Verifying)
+                && new FileInfo(Full(right, "lon.bin")).Length == 3 * 1024 * 1024 + 123);
+        }
+
+        // 11. Doi folder cua Job: state cu phai bi xoa, neu khong 2 chieu se lan truyen xoa sai
+        {
+            var left = NewTempDir("j11-l"); var right = NewTempDir("j11-r"); var newLeft = NewTempDir("j11-l2");
+            for (int i = 0; i < 10; i++) Write(left, $"f{i}.txt", "d" + i);
+            for (int i = 0; i < 6; i++) Write(newLeft, $"f{i}.txt", "d" + i); // folder moi chi co 6/10 file
+            using var store = NewStore("j11");
+            store.UpsertJob("j", "Job", left, right, SyncMode.TwoWay, ConflictPolicy.NewerWins);
+            new SyncSession("j", left, right, SyncMode.TwoWay, store).Run();
+
+            bool sameRootsKeep = !store.UpsertJob("j", "Doi ten", left.ToUpperInvariant() + "\\", right,
+                SyncMode.TwoWay, ConflictPolicy.NewerWins) && store.LoadState("j").Count == 10;
+            Check("Doi folder: chi doi ten / hoa-thuong / dau '\\' cuoi -> giu state", sameRootsKeep);
+
+            bool reset = store.UpsertJob("j", "Job", newLeft, right, SyncMode.TwoWay, ConflictPolicy.NewerWins);
+            Check("Doi folder Trai -> UpsertJob bao true va xoa state cu", reset && store.LoadState("j").Count == 0);
+
+            var o = new SyncSession("j", newLeft, right, SyncMode.TwoWay, store).Run();
+            Check("Doi folder Trai (6/10 file) -> KHONG xoa 4 file con lai ben Phai",
+                o.Result!.Deleted == 0 && Directory.GetFiles(right).Length == 10,
+                $"deleted={o.Result.Deleted} con={Directory.GetFiles(right).Length}");
+        }
+
+        // 12. Het cho tren o dich: bao loi ngay, khong ghi gi, khong de lai file tam
+        {
+            var left = NewTempDir("d12-l"); var right = NewTempDir("d12-r");
+            File.WriteAllBytes(Full(left, "lon.bin"), new byte[3 * 1024 * 1024]);
+            var oldProbe = SyncExecutor.FreeSpaceProbe;
+            SyncExecutor.FreeSpaceProbe = _ => 10; // gia lap o dich chi con 10 byte
+            try
+            {
+                var r = new SyncExecutor(left, right).Execute(
+                    new List<SyncAction> { new(SyncActionKind.CopyLeftToRight, "lon.bin", "test") }, 1);
+                Check("Het cho: bao loi ro rang 'Khong du cho', khong chep",
+                    r.Copied == 0 && r.Errors.Count == 1 && r.Errors[0].Contains("Khong du cho"), string.Join(";", r.Errors));
+                Check("Het cho: khong tao file dich lan file tam .tmp-sync",
+                    Directory.GetFiles(right).Length == 0, string.Join(",", Directory.GetFiles(right)));
+            }
+            finally { SyncExecutor.FreeSpaceProbe = oldProbe; }
+        }
+
+        // 13. Loi GIUA LUC dang ghi (gia lap rut USB / het cho) -> file tam do dang phai bi xoa
+        {
+            var left = NewTempDir("d13-l"); var right = NewTempDir("d13-r");
+            File.WriteAllBytes(Full(left, "lon.bin"), new byte[3 * 1024 * 1024]);
+            var r = new SyncExecutor(left, right).Execute(
+                new List<SyncAction> { new(SyncActionKind.CopyLeftToRight, "lon.bin", "test") }, 1,
+                new ThrowWhileWriting());
+            Check("Loi giua chung: ghi nhan loi va KHONG de lai file tam .tmp-sync",
+                r.Errors.Count == 1 && Directory.GetFiles(right).Length == 0,
+                $"errors={r.Errors.Count} files={string.Join(",", Directory.GetFiles(right).Select(Path.GetFileName))}");
+        }
+
+        // 14. Loi o buoc doi ten file tam -> file dich (dich co THU MUC trung ten) -> khong de lai file tam
+        {
+            var left = NewTempDir("d14-l"); var right = NewTempDir("d14-r");
+            Write(left, "bao-cao.txt", "noi dung");
+            Directory.CreateDirectory(Full(right, "bao-cao.txt")); // trung ten voi file can chep
+            var r = new SyncExecutor(left, right).Execute(
+                new List<SyncAction> { new(SyncActionKind.CopyLeftToRight, "bao-cao.txt", "test") }, 1);
+            Check("Loi khi doi ten sang dich: ghi nhan loi, KHONG de lai file tam .tmp-sync",
+                r.Errors.Count == 1 && Directory.GetFiles(right).Length == 0,
+                $"errors={r.Errors.Count} files={string.Join(",", Directory.GetFiles(right).Select(Path.GetFileName))}");
+        }
+
+        // 15. Khoi phuc NHIEU file tu history + trang thai "da khoi phuc"
+        {
+            var left = NewTempDir("h15-l"); var right = NewTempDir("h15-r");
+            Write(left, "a.txt", "a"); Write(left, "b.txt", "b"); Write(left, "c.txt", "v1");
+            for (int i = 0; i < 4; i++) Write(left, $"dem{i}.txt", "d" + i); // de 2 lenh xoa khong cham chot 50%
+            using var store = NewStore("h15");
+            var s = new SyncSession("j", left, right, SyncMode.MirrorOneWay, store);
+            s.Run();
+            Write(left, "c.txt", "v2-dai-hon"); s.Run();      // history: c v1
+            Write(left, "c.txt", "v3-dai-hon-nua"); s.Run();  // history: c v2
+            File.Delete(Full(left, "a.txt")); File.Delete(Full(left, "b.txt")); s.Run(); // history: a, b
+
+            var all = HistoryService.List(right);
+            var st = all.ToDictionary(e => e.RelativePath + "@" + e.Size, e => HistoryService.GetStatus(right, e));
+            Check("History: file da xoa -> 'file goc da bi xoa'; ban cu cua file dang co -> 'hien tai khac'",
+                all.Count == 4
+                && all.Where(e => e.RelativePath is "a.txt" or "b.txt").All(e => HistoryService.GetStatus(right, e) == HistoryStatus.OriginalMissing)
+                && all.Where(e => e.RelativePath == "c.txt").All(e => HistoryService.GetStatus(right, e) == HistoryStatus.CurrentDiffers),
+                string.Join(", ", st.Select(kv => kv.Key + "=" + kv.Value)));
+
+            var res = HistoryService.RestoreMany(right, all);
+            Check("Khoi phuc nhieu file: a, b va ban MOI NHAT cua c duoc khoi phuc; ban cu hon cua c bi bo qua",
+                res.Count(r => r.Restored) == 3 && Read(right, "a.txt") == "a" && Read(right, "b.txt") == "b"
+                && Read(right, "c.txt") == "v2-dai-hon" && res.Any(r => !r.Restored && r.Message.Contains("moi hon")),
+                string.Join("; ", res.Select(r => $"{r.Entry.RelativePath}:{r.Message}")));
+
+            var a = HistoryService.List(right).First(e => e.RelativePath == "a.txt");
+            Check("Sau khi khoi phuc: trang thai 'giong file hien tai'", HistoryService.GetStatus(right, a) == HistoryStatus.SameAsCurrent);
+            var again = HistoryService.RestoreMany(right, new[] { a });
+            Check("Khoi phuc lai file da khoi phuc -> bo qua, khong tao them ban sao",
+                !again[0].Restored && again[0].Message.Contains("da giong")
+                && HistoryService.List(right).Count(e => e.RelativePath == "a.txt") == 1);
+            Check("Khoi phuc: khong de lai file tam .tmp-sync",
+                !Directory.GetFiles(right, "*.tmp-sync", SearchOption.AllDirectories).Any());
+        }
+
         return (_pass, _fail);
+    }
+
+    // Nem IOException khi da ghi xong du lieu vao file tam (truoc khi kiem chung) - nhu o bi rut giua chung
+    private sealed class ThrowWhileWriting : IProgress<SyncProgress>
+    {
+        public void Report(SyncProgress value)
+        {
+            if (value.Stage == SyncProgressStage.Bytes && value.BytesDone > 0 && value.BytesDone == value.BytesTotal)
+                throw new IOException("Gia lap: thiet bi bi rut giua chung");
+        }
     }
 
     // Progress<T> day ve SynchronizationContext (bat dong bo) - test can ban dong bo

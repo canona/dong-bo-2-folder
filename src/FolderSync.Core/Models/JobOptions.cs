@@ -43,6 +43,20 @@ public sealed class JobOptions
     public bool DetectRenames { get; set; } = true;
     /// <summary>So noi dung bang hash khi quet (tat = chi so size+mtime: nhanh hon nhung kem chac).</summary>
     public bool CompareChecksums { get; set; } = true;
+    /// <summary>
+    /// Doc + hash TOAN BO noi dung moi file o MOI lan phan tich (cache hash van dung cho file khong doi size/mtime).
+    /// Mac dinh tat: CompareChecksums chi hash file mo ho (cung size, khac mtime) - nhanh hang chuc lan voi folder lon.
+    /// Bat khi can bat ca file bi sua ma giu nguyen size + mtime (rat hiem).
+    /// </summary>
+    public bool FullContentCompare { get; set; }
+    /// <summary>
+    /// Gioi han toc do chep cua Job (MB/s), tinh chung ca lan chay; 0 = khong gioi han.
+    /// JSON cu khong co truong nay -> 0 -> giu nguyen hanh vi cu. Am -> coi nhu 0.
+    /// </summary>
+    public int MaxCopySpeedMBps { get; set; }
+
+    /// <summary>Gia tri dua vao SyncOptions.MaxBytesPerSecond (0 = khong gioi han).</summary>
+    public long MaxCopyBytesPerSecond => MaxCopySpeedMBps > 0 ? MaxCopySpeedMBps * 1024L * 1024L : 0;
     /// <summary>Nguong chot an toan xoa hang loat rieng cua Job (% so file tham chieu).</summary>
     public int SafetyMaxDeletePercent { get; set; } = 50;
 
@@ -64,7 +78,8 @@ public sealed class JobOptions
     {
         CleanupHistory = false,
         CopyCreationTime = false,
-        CopyAttributes = false
+        CopyAttributes = false,
+        MaxCopySpeedMBps = 0 // Job cu: khong gioi han toc do (dung hanh vi truoc khi co tinh nang)
     };
 
     /// <summary>null/rong = Job moi (mac dinh moi). "{}" = gia tri mac dinh cua cot settings_json

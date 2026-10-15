@@ -40,7 +40,7 @@ dotnet run --project src\FolderSync.App\FolderSync.App.csproj
 dotnet run --project tests\FolderSync.Core.Harness
 ```
 
-Kết quả mong đợi ở dòng cuối: `TONG: 96 PASS, 0 FAIL`.
+Kết quả mong đợi ở dòng cuối: `TONG: 145 PASS, 0 FAIL`.
 
 ---
 
@@ -53,22 +53,38 @@ Kết quả mong đợi ở dòng cuối: `TONG: 96 PASS, 0 FAIL`.
 
 ---
 
-## CÁCH 3 — TẠO BẢN CHẠY ĐỘC LẬP (mang sang máy khác / cho vào USB, máy đích không cần cài .NET)
+## CÁCH 3 — TẠO BỘ CÀI ĐẶT / BẢN CHẠY ĐỘC LẬP (máy đích không cần cài .NET)
 
-Đứng trong thư mục code, mở PowerShell và chạy:
+Cần cài **Inno Setup 6** (https://jrsoftware.org/isinfo.php) để tạo file Setup.exe. Đứng trong thư mục code, mở PowerShell và chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packaging\build-release.ps1
+# Inno Setup cai o cho khac thuong le:  -IsccPath "D:\Tools\InnoSetup6\ISCC.exe"
+# O C: gan day (goi .NET runtime ~200 MB): -PackagesDir "D:\nuget-packages"
 ```
 
 Kết quả trong thư mục `dist\`:
 
 | Đầu ra | Dùng để |
 |---|---|
-| `FolderSync-portable.zip` | Giải nén ra 1 thư mục (hoặc vào USB) — chạy ngay file `FolderSync.App.exe`, không cần cài đặt |
-| `dist\installer\` | Đầu vào để làm bộ cài bằng Inno Setup (mở `packaging\FolderSync.iss` bằng Inno Setup 6 → Compile) |
+| `FolderSync-Setup-<phiên bản>.exe` | **Bộ cài đặt** (~65 MB): đã kèm .NET runtime + thư viện SQLite, cài cho user hiện tại (không cần quyền admin), có ô chọn **"Chạy FolderSync cùng Windows"** và tạo shortcut Desktop. Gỡ cài đặt trong Settings → Apps; dữ liệu Job (`%AppData%\FolderSync`) được giữ lại. |
+| `FolderSync-portable.zip` | Giải nén ra 1 thư mục (hoặc vào USB) — chạy ngay `FolderSync.App.exe`, không cần cài đặt. Có sẵn `portable.flag`: dữ liệu Job nằm ngay trong thư mục app, copy cả thư mục là mang theo được. |
+| `dist\installer\` | Bản publish dùng làm đầu vào cho bộ cài |
 
-Bản portable có sẵn file `portable.flag` — dữ liệu cấu hình (state.db) nằm ngay trong thư mục app nên copy cả thư mục là mang theo được toàn bộ Job đã tạo.
+---
+
+## CÁC CHẾ ĐỘ CHẠY: ĐẦY ĐỦ — MINI — KHAY HỆ THỐNG
+
+| Chế độ | Cách mở | Dùng khi |
+|---|---|---|
+| **Đầy đủ** | Mở app bình thường, nút **Mo day du** ở Mini, nhấp đúp icon ở khay | Cấu hình Job, phân tích, xem chi tiết từng file, khôi phục |
+| **Mini** | Nút **Mini** trên thanh công cụ, menu khay → *Che do Mini*, shortcut *FolderSync (Mini)* | Cửa sổ nhỏ ở góc màn hình (ghim trên cùng được): danh sách Job, trạng thái, thanh tiến trình, nút Đồng bộ từng Job / tất cả |
+| **Khay hệ thống** | Bấm **X** ở cửa sổ (mặc định chỉ ẩn, không thoát) hoặc khi chạy cùng Windows | App chạy nền, các Job liên tục / định kỳ vẫn đồng bộ; báo bong bóng khi Job lỗi |
+
+- **Chuột phải icon ở khay**: Mở đầy đủ / Mini / Đồng bộ tất cả Job ngay / Tạm dừng tự động (vd trước khi rút USB) / Chạy cùng Windows / **Thoát FolderSync**.
+- **Muốn thoát hẳn**: chuột phải icon khay → *Thoat FolderSync* (hoặc nút **Cai dat ▾** → *Thoat*). Muốn bấm X là thoát luôn: **Cai dat ▾** → bỏ chọn *Bam X: an xuong khay*.
+- **Chạy cùng Windows**: bật ở ô chọn của bộ cài, hoặc **Cai dat ▾** / menu khay → *Chay cung Windows*. Khi Windows khởi động, FolderSync chạy ẩn ở khay và các Job tự động bắt đầu theo dõi.
+- Chỉ chạy **một** FolderSync tại một thời điểm: mở app lần nữa chỉ hiện lại cửa sổ của app đang chạy.
 
 ---
 

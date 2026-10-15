@@ -295,7 +295,14 @@ public sealed class JobRunner : IDisposable
         // Lan chay vua tao folder con thieu (CreateFoldersIfMissing) -> gan watcher ngay, khong doi chu ky thu lai
         bool needWatch;
         lock (_lock) needWatch = _autoStarted && !_disposed && Options.AutoOnFileChange && _watchers.Count == 0;
-        if (needWatch && WatchedRoots().All(Directory.Exists)) AttachWatchers();
+        if (needWatch && WatchedRoots().All(Directory.Exists))
+        {
+            AttachWatchers();
+            // Thay doi xay ra giua luc lan chay tao folder va luc gan watcher khong co ai nghe -> chay bat kip
+            // 1 lan (CI cham tung bo sot: sua file o dich ngay sau khi tao folder ma Job khong chay lai)
+            lock (_lock) needWatch = _watchers.Count > 0;
+            if (needWatch) ScheduleDebounced();
+        }
 
         if (rerun)
         {

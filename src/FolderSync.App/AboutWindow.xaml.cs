@@ -15,4 +15,7 @@ public partial class AboutWindow : Window
         DeveloperText.Text = $"Phat trien thang {AppInfo.DevelopedOn} boi {AppInfo.Developer}";
         CopyrightText.Text = AppInfo.Copyright;
     }
+
+    // IsCancel chi tu dong cua so mo bang ShowDialog; hop nay mo bang Show (khong modal) nen phai Close tay
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

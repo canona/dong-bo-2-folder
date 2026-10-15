@@ -201,6 +201,7 @@ Trạng thái: đã commit lên `main` (15/10/2026).
 - **UI**: thanh trạng thái góc phải "© 2026 VTC Digital • v0.3.0" (bấm → Giới thiệu); hộp `AboutWindow` mở từ menu Cài đặt và menu khay (mở từ khay khi cửa sổ chính ẩn → không gán Owner, căn giữa màn hình); tooltip icon khay.
 - **Bộ cài**: `FolderSync.iss` thêm `AppPublisher`, `AppCopyright`, `VersionInfo*` (hiện trong "Apps & features" và Properties của Setup.exe). `MyAppVersion` phải khớp `Version` trong `Directory.Build.props`.
 - **Kiểm chứng**: chạy app với DB portable trống (dọn sau khi thử): thanh trạng thái + 4 dòng hộp Giới thiệu đúng qua UI Automation; metadata exe Company = VTC Digital. Harness 145/145 PASS, App build 0 lỗi / 0 cảnh báo.
+- **Lỗi sau commit `ca1240a`**: nút Đóng của hộp Giới thiệu không đóng — `IsCancel="True"` chỉ tự đóng cửa sổ mở bằng `ShowDialog()`, hộp này mở bằng `Show()` (không modal, để mở được từ khay). Sửa: thêm `Click` → `Close()`. Kiểm chứng qua UI Automation: bấm Đóng → hộp đóng.
 - **Bộ cài**: đã build lại `dist\FolderSync-Setup-0.3.0.exe` (64,6 MB) + `FolderSync-portable.zip` — Setup.exe và FolderSync.App.exe đều có Company = VTC Digital, Copyright © 2026 VTC Digital.
 
 ---

@@ -28,6 +28,7 @@
                 </StackPanel>
             </Border>
         </StackPanel>
-        <Button Content="Dong" HorizontalAlignment="Right" Padding="20,5" Margin="20,4,20,16" IsDefault="True" IsCancel="True"/>
+        <Button Content="Dong" HorizontalAlignment="Right" Padding="20,5" Margin="20,4,20,16" IsDefault="True" IsCancel="True"
+                Click="Close_Click"/>
     </StackPanel>
 </Window>

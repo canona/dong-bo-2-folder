@@ -1,0 +1,25 @@
+name: Test tren Windows
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-va-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build App WPF
+        run: dotnet build src\FolderSync.App\FolderSync.App.csproj -c Release
+
+      - name: Chay harness
+        run: dotnet run --project tests\FolderSync.Core.Harness -c Release

@@ -224,6 +224,17 @@ Trạng thái: đã commit lên `main` (15/10/2026), bộ cài 0.3.0 build lại
 - **UI**: 4 ô kiểu Task Manager (số % đậm + nhãn xanh) giữa dòng trạng thái và dòng bản quyền; nền đậm dần ở ≥ 50 / 70 / 90%; tooltip chi tiết (RAM đã dùng / tổng, ổ bận nhất, card mạng + Mbps / tốc độ liên kết). `DispatcherTimer` 1 giây, đo trên thread nền, bỏ qua khi cửa sổ ẩn xuống khay / thu nhỏ hoặc lần đo trước chưa xong.
 - **Kiểm chứng**: console riêng dùng chính `SystemMonitor.cs`: mỗi lần đo ~45–55 ms; CPU khớp `Get-Counter \Processor Information(_Total)\% Processor Utility` (lệch theo thời điểm lấy mẫu); Memory 87% (11,0 / 12,5 GB); Disk ổ "0 C: D:"; Network card Ethernet 100 Mbps. App build 0 lỗi / 0 cảnh báo (build ra thư mục riêng vì người dùng đang chạy bản Debug với dữ liệu thật — không tắt app của người dùng). **Chưa chụp được giao diện** vì mutex 1 phiên bản chặn mở bản thứ 2.
 
+## Đợt 16 — Thanh tiến trình kẹt "Đang quét" sau khi Phân tích xong; kiểm tra xóa trên USB FAT32 (15/10/2026, Claude Code)
+
+Trạng thái: đã commit lên `main` (15/10/2026), bộ cài 0.3.0 build lại.
+
+- **Hiện tượng (người dùng)**: Job 2 chiều liên tục (Phải = USB FAT32 H:), xóa tay file trong `.foldersync_history` rồi bấm Phân tích → app "treo ở Đang quét". Ảnh chụp: log đã có "Phân tích xong … 0 hành động / 5 file", nút Phân tích/Đồng bộ bấm được (Job không bận), thanh trạng thái "đồng bộ liên tục đang bật", nhưng thanh tiến trình vẫn "Đang quét: 5 file • Đã chạy 00:00:00 • Phải: (gốc)" — đó là báo cáo quét CUỐI CÙNG, tức được UI xử lý SAU khi phân tích đã xong và đã ẩn thanh.
+- **Điều tra**: tái hiện đúng kịch bản (sửa / xóa file ở nguồn → history, xóa tay file và cả thư mục history, Phân tích) trên NTFS và trên chính USB H: (thư mục thử riêng, xóa sau) — không kẹt. Gắn log tạm đo mức ưu tiên Dispatcher: `Progress<T>` post theo ngữ cảnh lúc tạo runner (mở app = `Send`, tạo lại qua menu chuột phải/đổi chế độ = `Render`), continuation của Phân tích chạy ở `Input`, `Finished`/`StateChanged` ở `Normal` → thứ tự giữa báo cáo tiến trình và sự kiện kết thúc phụ thuộc runner được tạo ở đâu, đảo được khi UI bận. Không tái hiện được 100% nên sửa phòng thủ 2 lớp.
+- **Sửa**: (1) `AutoProgress` = `UiProgress` + `Dispatcher.BeginInvoke(Normal)` — cùng mức với `StateChanged`/`Finished` → FIFO; (2) `OnSyncProgress` bỏ qua Scanning/Hashing khi Job không còn bận (báo cáo muộn của lần đã xong).
+- **Phát hiện thêm — USB H: lỗi phần cứng**: lần thử đầu trên H:, lan truyền xóa báo `A device which does not exist was specified` (lần sau thì không). System log: Event 11 `disk` "controller error on \Device\Harddisk1\DR6" lúc 17:01, 17:35, 17:44 — Harddisk1 = SanDisk Ultra USB 3.0 (H:). Khi controller lỗi, I/O trên USB bị chặn/thất bại tạm thời → nguồn gốc các lỗi thoáng qua; engine báo lỗi đúng, không mất dữ liệu (file chưa xóa sẽ được làm lại ở lần chạy sau). Engine chạy riêng (`SyncSession`, có/không watcher) xóa trên H: đều OK.
+- **Kiểm chứng**: App build 0 lỗi / 0 cảnh báo. Chạy lại kịch bản trên H: với bản sửa: tiến trình đồng bộ vẫn hiện, Phân tích sau khi xóa tay history (file và cả thư mục) → thanh tiến trình ẩn đúng; xóa ở nguồn → xóa ở đích + vào history. Đã dọn thư mục thử trên D: và H:.
+- **Bài học test**: `| Select-Object -First n` cắt pipeline làm script UI dừng trước `Stop-Process` → app thử còn chạy, giữ mutex, lần chạy sau không mở được. PowerShell 5.1 `Get-Content -Raw`/`Set-Content` đọc ghi ANSI + BOM → hỏng ký tự Unicode trong `.cs` — sửa file bằng Python UTF-8.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

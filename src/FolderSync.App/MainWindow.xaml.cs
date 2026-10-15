@@ -512,7 +512,13 @@ public partial class MainWindow : Window
             }
             var runner = new JobRunner(job, _store);
             if (old is not null) runner.InheritHistory(old);
-            runner.AutoProgress = new Progress<SyncProgress>(p => OnSyncProgress(job.Id, p));
+            // KHONG dung Progress<T>: no post theo muc uu tien cua ngu canh luc TAO (do duoc: mo app = Send,
+            // menu chuot phai / doi che do = Render) -> co the bi xu ly SAU khi lan chay/phan tich da xong
+            // (Finished / continuation o muc Normal/Input) -> thanh tien trinh hien lai "Dang quet" va ket o do.
+            // Co dinh muc Normal giong StateChanged/Finished -> dung thu tu FIFO.
+            var jobId = job.Id;
+            runner.AutoProgress = new UiProgress(p => Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Normal, () => OnSyncProgress(jobId, p)));
             runner.Log += (r, msg) => Dispatcher.BeginInvoke(() => Log(msg));
             runner.StateChanged += r => Dispatcher.BeginInvoke(() => OnRunnerStateChanged(r));
             runner.Started += (r, trigger) => Dispatcher.BeginInvoke(() => OnRunStarted(r, trigger));
@@ -924,6 +930,9 @@ public partial class MainWindow : Window
         {
             case SyncProgressStage.Scanning:
             case SyncProgressStage.Hashing:
+                // Bao cao quet/hash den MUON cua lan da xong (Job khong con ban) -> bo qua, neu khong se hien lai
+                // thanh "Dang quet" sau khi da an va ket o do (nguoi dung thay app "treo o Dang quet")
+                if (_runners.TryGetValue(jobId, out var scanRunner) && !scanRunner.IsBusy) break;
                 if (!view.ProgressVisible || !view.Indeterminate && p.Stage == SyncProgressStage.Scanning && view.ProgressLeft.StartsWith("Hoan tat"))
                     view.Watch.Restart();
                 if (!view.Watch.IsRunning) view.Watch.Restart();
@@ -1758,4 +1767,10 @@ public sealed class BulkObservableCollection<T> : ObservableCollection<T>
         OnCollectionChanged(new System.Collections.Specialized.NotifyCollectionChangedEventArgs(
             System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
     }
+}
+
+/// <summary>IProgress chuyen thang vao 1 delegate (MainWindow tu BeginInvoke ve UI o muc uu tien co dinh).</summary>
+internal sealed class UiProgress(Action<SyncProgress> report) : IProgress<SyncProgress>
+{
+    public void Report(SyncProgress value) => report(value);
 }

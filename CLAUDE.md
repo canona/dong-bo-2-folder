@@ -9,7 +9,7 @@ Tóm tắt toàn dự án cho mọi AI agent (tính năng, kiến trúc, trạng
 Phần mềm desktop Windows đồng bộ dữ liệu giữa 2 folder (cùng máy hoặc ổ USB), mô phỏng GoodSync.
 Mỗi Job chọn 1 chế độ: **Backup 1 chiều** (Trái→Phải, mặc định không xóa ở đích), **Mirror 1 chiều**
 (Phải giống hệt Trái, có xóa), **Sync 2 chiều** (lan truyền thêm/sửa/xóa cả 2 phía, có xử lý xung đột).
-Dùng nội bộ/cá nhân: không tài khoản, không server, không bản quyền.
+Dùng nội bộ/cá nhân: không tài khoản, không server, không cơ chế kích hoạt bản quyền (license key). Bản quyền © 2026 VTC Digital.
 
 Stack: C# / .NET 8 (`net8.0`, `net8.0-windows`), WPF, SQLite (`Microsoft.Data.Sqlite` 8.0.10),
 đóng gói Inno Setup 6 + bản portable. Chỉ Windows 10 64-bit trở lên.
@@ -58,8 +58,10 @@ src/FolderSync.App/             WPF: MainWindow (danh sach Job + JobView rieng t
   MiniWindow                    Che do Mini (dung chung JobListItem voi MainWindow)
   TrayIconService.cs            Icon khay (WinForms NotifyIcon) + menu + thong bao bong bong
   AppSettings.cs                Cai dat chung (app-settings.json canh state.db) + StartupManager (HKCU\...\Run)
+  AppInfo.cs, AboutWindow       Phien ban + ban quyen (doc tu metadata assembly) + hop Gioi thieu
 tests/FolderSync.Core.Harness/  Program.cs (P0) + P1Tests, P2Tests, JobRunnerTests, SafetyTests, OptionsTests, PerfTests, BandwidthTests
 packaging/                      build-release.ps1, FolderSync.iss
+Directory.Build.props           Product, Company (VTC Digital), Copyright, Version - ap cho moi project
 docs/                           Huong-dan-cai-dat-va-chay.md (nguoi dung), NHAT-KY-LAP-TRINH.md (dev)
 ```
 
@@ -137,6 +139,7 @@ Mỗi điều dưới đây từng là lỗi thật (làm mất dữ liệu) và
 - Icon `.ico` là nhị phân → repo chỉ lưu `Assets/foldersync.ico.b64`; `build-release.ps1` sinh lại `.ico`. Cửa sổ dùng PNG nhúng (`IconHelper`).
 - **Chế độ chạy**: `ShutdownMode=OnExplicitShutdown`; bấm X = ẩn xuống khay (`AppSettings.CloseToTray`), thoát thật chỉ qua `MainWindow.ExitApp()`. Khởi tạo Job ở `InitOnce()` gọi từ `Start()` — **không chỉ dựa vào `Window_Loaded`** vì khởi động `--tray` thì cửa sổ không bao giờ hiện, Loaded không bắn, Job liên tục sẽ không chạy.
 - **Một phiên bản duy nhất** là bất biến an toàn: 2 tiến trình cùng mở 1 `state.db` = 2 runner cho cùng 1 Job → chạy chồng. Tên mutex `FolderSyncSingleInstance` dùng chung với `AppMutex` trong `packaging/FolderSync.iss`.
+- **Bản quyền / phiên bản**: © 2026 VTC Digital, phát triển 10/2026 bởi Canona. Nguồn duy nhất cho code là `Directory.Build.props` (`AppInfo` đọc lại từ assembly — không ghi cứng chuỗi trong UI). Đổi phiên bản phải sửa **cả** `Version` ở đó **và** `MyAppVersion` trong `packaging/FolderSync.iss`.
 - **Chạy cùng Windows**: giá trị `FolderSync` trong `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` = `"<exe>" --tray`. App (`StartupManager`) và bộ cài (`[Registry]` task `autostart`) ghi **cùng tên + cùng tham số**; gỡ cài đặt luôn xóa giá trị này. Đổi tên/tham số phải sửa cả 2 nơi.
 - WinForms bật chỉ để dùng `NotifyIcon`; csproj có `<Using Remove="System.Windows.Forms" />` + `System.Drawing` để không trùng tên với WPF. Trong code dùng alias (`Forms.`, `Drawing.`).
 - UI Automation: `MenuItem` phải gọi `InvokePattern` (không phải `TogglePattern` — Toggle chỉ đổi dấu tích, không bắn `Click`).

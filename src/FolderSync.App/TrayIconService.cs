@@ -15,7 +15,7 @@ public sealed class TrayIconService : IDisposable
     private readonly Forms.ToolStripMenuItem _pauseItem;
     private readonly Forms.ToolStripMenuItem _startupItem;
 
-    public Action? OpenFull, OpenMini, SyncAll, TogglePause, ToggleStartup, Exit;
+    public Action? OpenFull, OpenMini, SyncAll, TogglePause, ToggleStartup, About, Exit;
 
     public TrayIconService()
     {
@@ -34,12 +34,14 @@ public sealed class TrayIconService : IDisposable
         _startupItem = new Forms.ToolStripMenuItem("Chay cung Windows", null, (_, _) => ToggleStartup?.Invoke());
         menu.Items.Add(_startupItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("Gioi thieu FolderSync", null, (_, _) => About?.Invoke());
+        menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Thoat FolderSync", null, (_, _) => Exit?.Invoke());
 
         _icon = new Forms.NotifyIcon
         {
             Icon = LoadIcon(),
-            Text = "FolderSync",
+            Text = $"FolderSync - {AppInfo.ShortNotice}",
             ContextMenuStrip = menu,
             Visible = true
         };

@@ -192,6 +192,17 @@ Trạng thái: đã commit `678c072` lên `main` (15/10/2026).
 - **UI**: tab Nâng cao — thanh kéo 0–200 MB/s + ô số (tới 10.000) + dòng gợi ý ("1 GB mất khoảng…"); handler có chốt null (sự kiện bắn trong `InitializeComponent`) + cờ chống vòng lặp slider ↔ ô số; Lưu đọc lại ô số. Panel tiến trình thêm "• giới hạn x MB/s".
 - **Kiểm chứng**: `BandwidthTests.cs` 7 ca, viết trước — harness **không biên dịch** trên code cũ (thiếu `SyncOptions.MaxBytesPerSecond`, `JobOptions.MaxCopySpeedMBps`); sau Core → 7/7 PASS (2 MB/s file 4 MB ≥ 1,8 s; không giới hạn < 1,5 s; 4 file chung giới hạn; Hủy khi đang chờ < 1,5 s không sót tmp; JSON cũ/Legacy = 0; lưu/đọc 25 MB/s; JobRunner áp giới hạn). Chạy thử app (DB portable riêng): kéo slider 5 MB/s, lưu, đồng bộ file 40 MB → 8 s, TB 4,97 MB/s, panel hiện "giới hạn 5 MB/s", không sót tmp. Harness **145/145 PASS**, App build 0 lỗi / 0 cảnh báo.
 
+## Đợt 13 — Thông tin bản quyền VTC Digital (15/10/2026, Claude Code)
+
+Trạng thái: đã commit lên `main` (15/10/2026).
+
+- **Yêu cầu**: bản quyền thuộc VTC Digital, phát triển tháng 10/2026 bởi Canona.
+- **Thiết kế**: `Directory.Build.props` ở gốc repo là nguồn duy nhất (`Product`, `Company`, `Authors`, `Copyright`, `Description`, `Version` 0.3.0 + `AssemblyMetadata` Developer/DevelopedOn/CopyrightOwner) → hiện trong Properties > Details của `.exe`/`.dll`. `AppInfo` (App) đọc lại từ assembly, không ghi cứng chuỗi trong UI.
+- **UI**: thanh trạng thái góc phải "© 2026 VTC Digital • v0.3.0" (bấm → Giới thiệu); hộp `AboutWindow` mở từ menu Cài đặt và menu khay (mở từ khay khi cửa sổ chính ẩn → không gán Owner, căn giữa màn hình); tooltip icon khay.
+- **Bộ cài**: `FolderSync.iss` thêm `AppPublisher`, `AppCopyright`, `VersionInfo*` (hiện trong "Apps & features" và Properties của Setup.exe). `MyAppVersion` phải khớp `Version` trong `Directory.Build.props`.
+- **Kiểm chứng**: chạy app với DB portable trống (dọn sau khi thử): thanh trạng thái + 4 dòng hộp Giới thiệu đúng qua UI Automation; metadata exe Company = VTC Digital. Harness 145/145 PASS, App build 0 lỗi / 0 cảnh báo.
+- **Bộ cài**: đã build lại `dist\FolderSync-Setup-0.3.0.exe` (64,6 MB) + `FolderSync-portable.zip` — Setup.exe và FolderSync.App.exe đều có Company = VTC Digital, Copyright © 2026 VTC Digital.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

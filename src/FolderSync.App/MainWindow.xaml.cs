@@ -153,9 +153,11 @@ public partial class MainWindow : Window
             SyncAll = () => _ = SyncAllAsync(),
             TogglePause = TogglePauseAuto,
             ToggleStartup = ToggleStartWithWindows,
+            About = ShowAbout,
             Exit = ExitApp
         };
         Closing += MainWindow_Closing;
+        CopyrightNotice.Text = $"{AppInfo.ShortNotice}  •  v{AppInfo.Version}";
         // Cay luon hien thanh cuon doc -> tieu de chua cho dung bang do de cac cot thang hang
         TreeHeaderGrid.Margin = new Thickness(0, 0, SystemParameters.VerticalScrollBarWidth, 0);
         Closed += (_, _) =>
@@ -374,6 +376,21 @@ public partial class MainWindow : Window
 
     private void Mini_Click(object sender, RoutedEventArgs e) => ShowMini();
 
+    private AboutWindow? _about;
+
+    /// <summary>Hop Gioi thieu (phien ban + ban quyen). Mo tu khay khi cua so chinh dang an -> khong gan Owner.</summary>
+    public void ShowAbout()
+    {
+        if (_about is { IsLoaded: true }) { _about.Activate(); return; }
+        _about = new AboutWindow();
+        if (IsVisible) _about.Owner = this;
+        else _about.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        _about.Closed += (_, _) => _about = null; // nha tham chieu, khong giu cua so da dong
+        _about.Show();
+    }
+
+    private void CopyrightNotice_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => ShowAbout();
+
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu { PlacementTarget = (UIElement)sender, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
@@ -396,6 +413,10 @@ public partial class MainWindow : Window
             _settings.Save();
         }));
         menu.Items.Add(Check("Tam dung tu dong dong bo (moi Job)", _autoPaused, TogglePauseAuto));
+        menu.Items.Add(new Separator());
+        var about = new MenuItem { Header = "Gioi thieu FolderSync" };
+        about.Click += (_, _) => ShowAbout();
+        menu.Items.Add(about);
         menu.Items.Add(new Separator());
         var exit = new MenuItem { Header = "Thoat FolderSync" };
         exit.Click += (_, _) => ExitApp();

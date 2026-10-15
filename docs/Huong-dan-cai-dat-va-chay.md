@@ -2,6 +2,7 @@
 
 > Mã nguồn: https://github.com/canona/dong-bo-2-folder — nhánh `main`
 > Yêu cầu: Windows 10 64-bit trở lên
+> **Bản quyền © 2026 VTC Digital.** Phát triển tháng 10/2026 bởi Canona. All rights reserved.
 
 ---
 

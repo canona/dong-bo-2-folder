@@ -6,7 +6,10 @@
 ; KHONG can cai .NET.
 
 #define MyAppName "FolderSync"
+; Phien ban + ban quyen: giu KHOP voi Directory.Build.props (Version, Company, Copyright)
 #define MyAppVersion "0.3.0"
+#define MyAppPublisher "VTC Digital"
+#define MyAppCopyright "Copyright (C) 2026 VTC Digital. All rights reserved."
 #define MyAppExeName "FolderSync.App.exe"
 ; Trung voi App.MutexName (src\FolderSync.App\App.xaml.cs): bo cai/go cai doi app dong truoc
 #define MyAppMutex "FolderSyncSingleInstance"
@@ -17,7 +20,12 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 VersionInfoVersion={#MyAppVersion}
-AppPublisher=FolderSync
+AppPublisher={#MyAppPublisher}
+AppCopyright={#MyAppCopyright}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoCopyright={#MyAppCopyright}
+VersionInfoProductName={#MyAppName}
+VersionInfoDescription=Bo cai {#MyAppName} - phat trien thang 10/2026 boi Canona
 ; Cai cho user hien tai, KHONG can quyen admin (vao %LocalAppData%\Programs\FolderSync);
 ; nguoi dung van co the chon cai cho moi user (can admin) o hop thoai dau.
 PrivilegesRequired=lowest

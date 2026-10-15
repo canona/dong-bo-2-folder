@@ -428,6 +428,9 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" x:Name="StatusText" Text="San sang." VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"/>
+                <TextBlock Grid.Column="1" x:Name="CopyrightNotice" HorizontalAlignment="Right" VerticalAlignment="Center"
+                           FontSize="11" Foreground="{StaticResource MutedTextBrush}" Cursor="Hand"
+                           MouseLeftButtonUp="CopyrightNotice_Click" ToolTip="Gioi thieu FolderSync"/>
             </Grid>
         </Border>
     </Grid>

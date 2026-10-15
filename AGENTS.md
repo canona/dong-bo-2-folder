@@ -19,6 +19,7 @@ File này dành cho **mọi AI agent** (Claude, Codex, Cursor, Copilot, Gemini�
 | Đóng gói | Bản portable (zip) + Inno Setup 6 (`packaging/`) |
 | Test | Harness tự viết (console app, **không phải xUnit**) |
 | Repo | https://github.com/canona/dong-bo-2-folder — nhánh chính `main` |
+| Bản quyền | © 2026 **VTC Digital** — phát triển tháng 10/2026 bởi **Canona**. Khai báo 1 nơi: `Directory.Build.props` (hiện trong Properties của .exe, hộp Giới thiệu, thanh trạng thái, bộ cài) |
 
 ### Ba chế độ đồng bộ (mỗi Job chọn 1)
 
@@ -86,7 +87,9 @@ src/FolderSync.App/    WPF
   MiniWindow                   Che do Mini
   TrayIconService / AppSettings  Icon khay, cai dat chung, chay cung Windows (HKCU Run, tham so --tray)
   App.xaml.cs                  1 phien ban (mutex), tham so --tray / --mini
+  AppInfo / AboutWindow        Phien ban + ban quyen doc tu metadata assembly; hop Gioi thieu
 tests/FolderSync.Core.Harness/ Program.cs (P0) + P1Tests, P2Tests, JobRunnerTests, SafetyTests, OptionsTests
+Directory.Build.props          Product / Company / Copyright / Version chung cho moi project
 packaging/                     build-release.ps1 (publish self-contained + zip portable + goi ISCC), FolderSync.iss
 ```
 

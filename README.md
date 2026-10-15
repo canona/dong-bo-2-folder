@@ -1,5 +1,7 @@
 # FolderSync — Phần mềm desktop đồng bộ dữ liệu giữa 2 folder
 
+> **Bản quyền © 2026 VTC Digital.** Phát triển tháng 10/2026 bởi Canona. All rights reserved.
+
 > Kế hoạch đầy đủ: `~/workspace/your_files/Ke-hoach-phat-trien-phan-mem-dong-bo-2-folder.md`
 
 ## Phạm vi đã khóa (14/10/2026)

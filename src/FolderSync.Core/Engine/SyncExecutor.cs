@@ -40,6 +40,16 @@ public sealed class SyncResult
     /// sau khi ghi -> dua vao cache hash: lan quet sau va state khong phai doc lai noi dung.
     /// </summary>
     public List<(bool Left, FileEntry Entry)> KnownHashes { get; } = new();
+
+    /// <summary>
+    /// Ban chep da kiem chung (noi dung/size/mtime cua nguon LUC CHEP) theo duong dan dich, chi cho chep cung ten.
+    /// Neu nguon bi sua ngay sau do thi day moi la moc "2 phia da giong" that - de lan sau nhan ra chi nguon doi
+    /// (khong bao xung dot gia).
+    /// </summary>
+    public List<(bool DstLeft, FileEntry Entry)> VerifiedCopies { get; } = new();
+
+    /// <summary>Duong dan (tuong doi) cua hanh dong bi loi I/O: state cu cua chung phai duoc giu, xem SyncSession.</summary>
+    public List<string> FailedPaths { get; } = new();
 }
 
 public enum SyncProgressStage { Scanning, Hashing, Planned, Started, Bytes, Verifying, Completed, Failed }
@@ -199,6 +209,8 @@ public sealed class SyncExecutor
             {
                 var message = FriendlyError(ex);
                 result.Errors.Add($"{action.Kind} {action.RelativePath}: {message}");
+                result.FailedPaths.Add(action.RelativePath);
+                if (action.TargetPath is { } failedTarget) result.FailedPaths.Add(failedTarget);
                 progress?.Report(new SyncProgress(SyncProgressStage.Failed, i, actions.Count, action, destination, message));
             }
         }
@@ -219,6 +231,8 @@ public sealed class SyncExecutor
             var dst = new FileInfo(Full(dstLeft ? _leftRoot : _rightRoot, dstRel));
             if (dst.Length == copied.Size)
                 result.KnownHashes.Add((dstLeft, new FileEntry(dstRel, dst.Length, dst.LastWriteTimeUtc, copied.Hash)));
+            if (string.Equals(srcRel, dstRel, StringComparison.OrdinalIgnoreCase))
+                result.VerifiedCopies.Add((dstLeft, new FileEntry(dstRel, copied.Size, copied.MtimeUtc, copied.Hash)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* chi la cache */ }
     }

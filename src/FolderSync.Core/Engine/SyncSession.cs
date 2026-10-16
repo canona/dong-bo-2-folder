@@ -357,8 +357,11 @@ public sealed class SyncSession
             var leftAfter = ScanSide(left: true, progress: null, CancellationToken.None);
             var rightAfter = ScanSide(left: false, progress: null, CancellationToken.None);
             var newState = ComputeSyncedState(leftAfter.Entries, rightAfter.Entries, _timeTolerance);
+            newState = KeepVerifiedCopies(newState, result.VerifiedCopies, leftAfter.Entries, rightAfter.Entries);
+            // Hanh dong loi (vd nguon bi xoa/doi ten giua luc chep) cung phai giu state cu: bo di thi lan sau
+            // file con lai o phia kia nhin nhu "file moi" va bi chep nguoc ve (hoi sinh file nguoi dung vua xoa).
             var unreadable = ctx.Left.FailedPaths.Concat(ctx.Right.FailedPaths)
-                .Concat(leftAfter.FailedPaths).Concat(rightAfter.FailedPaths).ToList();
+                .Concat(leftAfter.FailedPaths).Concat(rightAfter.FailedPaths).Concat(result.FailedPaths).ToList();
             FaultHook?.Invoke(FaultPoints.AfterExecuteBeforeSaveState, null);
             _store.SaveState(_jobId, KeepUnreadableState(newState, stateBefore, unreadable));
             UpdateCache(leftAfter.RootMissing ? null : leftAfter.Entries, rightAfter.RootMissing ? null : rightAfter.Entries);
@@ -408,6 +411,32 @@ public sealed class SyncSession
                     $"Bo qua: khong doc duoc luc quet (du dinh: {a.Kind})", a.TargetPath)
                 : a)
             .ToList();
+    }
+
+    /// <summary>
+    /// File vua chep xong ma nguon bi sua NGAY SAU DO (khong con giong dich nen ComputeSyncedState bo qua): ghi
+    /// ban da kiem chung luc chep lam moc state, de lan sau thay dung "chi nguon doi, dich nguyen" thay vi
+    /// "2 phia deu khac, khong co state" = xung dot gia. Chi ap dung khi DICH van dung la ban vua chep.
+    /// </summary>
+    internal IReadOnlyDictionary<string, FileEntry> KeepVerifiedCopies(
+        IReadOnlyDictionary<string, FileEntry> synced,
+        IReadOnlyList<(bool DstLeft, FileEntry Entry)> copies,
+        IReadOnlyDictionary<string, FileEntry> left,
+        IReadOnlyDictionary<string, FileEntry> right)
+    {
+        if (copies.Count == 0) return synced;
+        var result = new Dictionary<string, FileEntry>(synced, StringComparer.OrdinalIgnoreCase);
+        foreach (var (dstLeft, copied) in copies)
+        {
+            if (result.ContainsKey(copied.RelativePath)) continue;
+            var dst = dstLeft ? left : right;
+            if (!dst.TryGetValue(copied.RelativePath, out var d) || d.Size != copied.Size) continue;
+            bool same = d.Hash is not null && copied.Hash is not null
+                ? string.Equals(d.Hash, copied.Hash, StringComparison.OrdinalIgnoreCase)
+                : (d.MtimeUtc - copied.MtimeUtc).Duration() <= _timeTolerance;
+            if (same) result[copied.RelativePath] = copied;
+        }
+        return result;
     }
 
     /// <summary>

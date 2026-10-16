@@ -196,7 +196,7 @@ public static class HardFaultTests
         B3Case.SuaNguonTruocCopy => "sua nguon sau Analyze (truoc hanh dong dau)",
         B3Case.SuaNguonGiuaVerify => "sua nguon cung size, sau khi kiem chung file tam",
         B3Case.SuaNguonSauRename => "sua nguon cung size, ngay sau khi rename vao dich",
-        B3Case.XoaNguon => "xoa file nguon sap copy",
+        B3Case.XoaNguon => "xoa file nguon giua luc chep",
         _ => "doi ten thu muc cha cua file sap copy"
     };
 
@@ -212,6 +212,8 @@ public static class HardFaultTests
         {
             B3Case.SuaNguonGiuaVerify => FaultPoints.AfterTempWrite,
             B3Case.SuaNguonSauRename => FaultPoints.AfterRename,
+            // Xoa nguon NGAY SAU khi file tam da ghi: kiem ca "khong de lai .tmp-sync" va "khong hoi sinh file da xoa"
+            B3Case.XoaNguon => FaultPoints.MidCopy,
             _ => FaultPoints.BeforeFirstAction
         };
         void Hook(string p, string? path)
@@ -249,7 +251,11 @@ public static class HardFaultTests
         var runA = RunSession(sc, Hook)!;
         if (!fired) { v.Add("diem chot khong duoc kich hoat"); Check($"B3 {mode} / {CaseName(c)}", v); return; }
         if (runA.Result!.Aborted) v.Add("lan A bi huy: " + runA.Result.AbortReason);
-        v.AddRange(HardOracle.AssertStateKhopDia(sc.Db, Job, sc.Left, sc.Right));
+        // Sau lan A (nguon bi doi giua luc chay) state co the giu moc cu cua cac file nguoi dung vua sua/xoa; sau lan B thi nghiem
+        var disturbed = c == B3Case.DoiTenThuMucCha
+            ? new HashSet<string> { "sub/e.txt", "sub/f.txt", "sub/g.txt", "sub/n2.txt" }
+            : new HashSet<string> { "a.txt" };
+        v.AddRange(HardOracle.AssertStateKhopDia(sc.Db, Job, sc.Left, sc.Right, disturbed));
         v.AddRange(HardOracle.AssertKhongConFileTam(sc.Left, sc.Right));
         v.AddRange(HardOracle.AssertKhongSyncThuMucHistory(runA.Actions, sc.Left, sc.Right));
         CheckContents(sc, sc.Left, "Trai", v);
@@ -269,23 +275,22 @@ public static class HardFaultTests
         CheckConverged(sc, v);
 
         var finalL = HardOracle.Snapshot(sc.Left); var finalR = HardOracle.Snapshot(sc.Right);
-        // 2 chieu, nguon doi SAU khi file da chep: lan A khong the noi "da giong" (dung) nen state bo a.txt;
-        // lan B thay 2 phia khac nhau + khong co state = Conflict cho nguoi dung quyet. Chap nhan (khong mat ban nao,
-        // khong bi ban chup cu de len) - xem muc PHAT HIEN: dung ra chi Trai doi, khong can xung dot.
-        bool staleTwoWay = mode == SyncMode.TwoWay && c is B3Case.SuaNguonGiuaVerify or B3Case.SuaNguonSauRename;
-        if (staleTwoWay)
-        {
-            v.RemoveAll(s => s.Contains("Conflict a.txt") || s.StartsWith("hoi tu: 'a.txt'"));
-            if (HardOracle.Sha(Full(sc.Left, "a.txt")) != editedSha) v.Add("a.txt o Trai bi doi khac ban nguoi dung vua sua");
-        }
+        // Nguon doi SAU khi file da chep (moi che do, ke ca 2 chieu): Trai giu ban nguoi dung vua sua, Phai nhan ban do
+        // o lan B - KHONG duoc rot vao Conflict (Oracle + CheckConverged bat "Conflict a.txt").
+        if (editedSha != "" && HardOracle.Sha(Full(sc.Left, "a.txt")) != editedSha)
+            v.Add("a.txt o Trai bi doi khac ban nguoi dung vua sua");
         switch (c)
         {
             case B3Case.SuaNguonTruocCopy:
             case B3Case.SuaNguonGiuaVerify:
             case B3Case.SuaNguonSauRename:
                 var want = HardOracle.Sha(Full(sc.Left, "a.txt"));
-                if (!staleTwoWay && (!finalR.TryGetValue("a.txt", out var gotR) || gotR != want))
+                if ((!finalR.TryGetValue("a.txt", out var gotR) || gotR != want))
                     v.Add("a.txt o Phai KHONG phai ban moi nhat cua nguon (bi anh chup cu giu lai)");
+                break;
+            case B3Case.XoaNguon:
+                // Nguoi dung da xoa a.txt: viec xoa phai thang, khong duoc chep nguoc tu Phai ve (hoi sinh)
+                if (File.Exists(Full(sc.Left, "a.txt"))) v.Add("a.txt da xoa o Trai bi hoi sinh");
                 break;
             case B3Case.DoiTenThuMucCha:
                 if (!finalR.ContainsKey("sub2/e.txt")) v.Add("sub2/e.txt chua sang Phai sau lan B");

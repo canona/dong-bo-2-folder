@@ -247,6 +247,19 @@ Trạng thái: nhánh `test/hard-tests`, PR vào `main` (chưa merge). Issue #2.
 
 ---
 
+## Đợt 18 — Sửa 3 phát hiện của HARD-B3 trên PR #3 (16/10/2026, Claude Code)
+
+Commit: xem lịch sử nhánh `claude/issue-2-20261016-0853`.
+
+- Test siết trước (FAIL trên code cũ: 194 PASS / 4 FAIL): bỏ ngoại lệ `staleTwoWay` (2 ca Sửa nguồn × 2 chiều), ca "xóa nguồn" chuyển sang điểm `MidCopy` + kiểm "không hồi sinh".
+- (1) Xung đột giả 2 chiều khi nguồn đổi SAU khi chép: state bỏ file đó (2 phía không còn giống) → lần sau "2 phía khác nhau, không có state" = Conflict. Sửa: `SyncResult.VerifiedCopies` + `SyncSession.KeepVerifiedCopies` ghi bản đã kiểm chứng lúc chép làm mốc state, chỉ khi DÍCH vẫn đúng là bản đó.
+- (2) File xóa/đổi tên giữa lúc chạy bị chép ngược (hồi sinh): hành động lỗi làm state bỏ file → file còn ở phía kia nhìn như "file mới". Sửa: `SyncResult.FailedPaths` đưa vào `KeepUnreadableState` (cùng cơ chế với file không đọc được) → lần sau thành lệnh xóa phía kia (có history).
+- (3) `*.tmp-sync` mồ côi khi nguồn biến mất giữa lúc chép: KHÔNG tái hiện được trên Linux (mọi đường lỗi của `AtomicCopy` đã xóa file tạm; ca xóa nguồn ở `MidCopy` PASS trên code cũ) → không sửa. Cần thử trên Windows (nguồn mở không có `FileShare.Delete`).
+- Đánh đổi: state có thể giữ mốc cũ không còn khớp đĩa (Oracle (b) có tham số `staleOk`, chỉ chấp nhận khi hash mốc khớp ≥ 1 phía thật).
+- Kiểm chứng: harness 197 PASS + 1 FAIL (ca watcher có sẵn), 3 lần liên tiếp giống hệt.
+
+---
+
 ## Mẫu cho đợt tiếp theo
 
 ```markdown

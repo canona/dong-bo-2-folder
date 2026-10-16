@@ -73,12 +73,18 @@ public static class HardOracle
 
     /// <summary>Moi dong file_state: file co o CA 2 phia, size khop dong state, SHA-256 2 phia bang nhau
     /// (va bang hash trong state neu co). Tu quet dia, khong tin ket qua engine.</summary>
-    public static List<string> AssertStateKhopDia(string dbPath, string jobId, string left, string right)
+    /// <param name="staleOk">Duong dan nguoi dung vua sua/xoa GIUA luc chay: state duoc phep la moc cu (ban da kiem
+    /// chung luc chep / ban truoc khi xoa) - nhung PHAI khop that voi it nhat 1 phia dang con, khong thi la state noi doi.</param>
+    public static List<string> AssertStateKhopDia(string dbPath, string jobId, string left, string right,
+        ISet<string>? staleOk = null)
     {
         var v = new List<string>();
         foreach (var row in ReadStateRows(dbPath, jobId))
         {
             var l = Full(left, row.Path); var r = Full(right, row.Path);
+            if (staleOk is not null && staleOk.Contains(row.Path) && row.Hash is not null
+                && new[] { l, r }.Any(f => File.Exists(f) && string.Equals(Sha(f), row.Hash, StringComparison.OrdinalIgnoreCase)))
+                continue;
             if (!File.Exists(l) || !File.Exists(r))
             {
                 v.Add($"(b) state ghi '{row.Path}' nhung thieu o {(File.Exists(l) ? "Phai" : "Trai")}");

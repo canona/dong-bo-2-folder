@@ -236,6 +236,15 @@ Trạng thái: đã commit lên `main` (15/10/2026), bộ cài 0.3.0 build lại
 - **CI GitHub Actions** (workflow `test-windows.yml` do canona thêm): lần đầu 155/156 — ca "Liên tục Mirror, đích chưa có: tạo folder rồi theo dõi NGAY" FAIL trên runner chậm. Race có sẵn: watcher chỉ gắn SAU khi lần chạy tạo folder kết thúc → sửa ở đích trong khoảng đó không ai nghe. Sửa: gắn watcher xong thì chạy bắt kịp 1 lần (`ScheduleDebounced`).
 - **Bài học test**: `| Select-Object -First n` cắt pipeline làm script UI dừng trước `Stop-Process` → app thử còn chạy, giữ mutex, lần chạy sau không mở được. PowerShell 5.1 `Get-Content -Raw`/`Set-Content` đọc ghi ANSI + BOM → hỏng ký tự Unicode trong `.cs` — sửa file bằng Python UTF-8.
 
+## Đợt 17 — Bộ test khó giai đoạn 1a: Oracle + chích lỗi, HARD-B1 / HARD-B3 (16/10/2026, Claude Code)
+
+Trạng thái: nhánh `test/hard-tests`, PR vào `main` (chưa merge). Issue #2.
+
+- **Thêm**: `HardOracle.cs` (6 hàm kiểm bất biến ĐỘC LẬP với engine: tự duyệt thư mục, tự tính SHA-256, đọc thẳng SQLite), điểm móc chích lỗi `FaultPoints` (9 điểm: AfterScan, BeforeFirstAction, MidCopy, AfterTempWrite, BeforeRename, AfterRename, BeforeHistoryMove, AfterExecuteBeforeSaveState, DuringSaveState) qua `FaultHook` internal của `SyncSession` / `SyncExecutor` / `SqliteStateStore` — mặc định null nên sản xuất không đổi; `HardFaultTests.cs` (27 ca B1 + 15 ca B3).
+- **Lỗi thật sửa**: `SyncExecutor.Remember` ghi vào cache hash entry của file NGUỒN bằng size/mtime đọc lại SAU khi chép nhưng hash của nội dung ĐÃ chép. Nguồn bị sửa (cùng size) giữa lúc kiểm chứng file tạm và lúc ghi cache → cache nhiễm (mtime mới + hash cũ) → quét lại thấy 2 phía "cùng hash" → state ghi "đã đồng bộ" cho 2 file khác nội dung, lần sau không bao giờ chép lại (Backup/Mirror). Sửa: dùng size/mtime đã kiểm chứng lúc chép (`CopiedFile`).
+- **Chưa sửa (xem báo cáo trong issue #2)**: state bỏ entry của file đổi giữa lúc chạy → 2 chiều có thể hồi sinh file người dùng vừa xóa/đổi tên hoặc sinh Conflict dù chỉ 1 phía đổi.
+- **Baseline**: trên Linux CI (.NET SDK 10) harness là 155/156 do ca watcher "RUN Lien tuc Backup: tao file moi o nguon" (có sẵn, không liên quan). Kết quả sau đợt này: 197 PASS + đúng ca đó FAIL.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

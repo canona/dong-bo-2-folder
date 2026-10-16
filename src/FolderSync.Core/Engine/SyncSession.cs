@@ -86,6 +86,9 @@ public sealed class SyncSession
         _createMissingRoots = createMissingRoots;
     }
 
+    /// <summary>Diem chot chich loi (xem FaultPoints) - mac dinh null, chi harness gan.</summary>
+    internal Action<string, string?>? FaultHook { get; set; }
+
     private readonly TimeSpan _timeTolerance;
     private readonly bool _hashAllFiles;
     private readonly ScanCache _cache;
@@ -261,6 +264,7 @@ public sealed class SyncSession
         EnsureCacheLoaded();
         var leftScan = ScanSide(left: true, progress, ct);
         var rightScan = ScanSide(left: false, progress, ct);
+        FaultHook?.Invoke(FaultPoints.AfterScan, null);
         var state = _store.LoadState(_jobId);
 
         var left = new Dictionary<string, FileEntry>(leftScan.Entries, StringComparer.OrdinalIgnoreCase);
@@ -342,7 +346,7 @@ public sealed class SyncSession
             progress?.Report(new SyncProgress(SyncProgressStage.Planned, 0, preview.Actions.Count, null,
                 Plan: preview.Actions, BytesTotal: CopyBytes(preview.Actions, ctx.Left.Entries, ctx.Right.Entries),
                 ScanLeft: ctx.Left.Entries, ScanRight: ctx.Right.Entries));
-            var executor = new SyncExecutor(_leftRoot, _rightRoot, _options);
+            var executor = new SyncExecutor(_leftRoot, _rightRoot, _options) { FaultHook = FaultHook };
             result = executor.Execute(preview.Actions, baseline, progress, ct, pause);
         }
 
@@ -355,6 +359,7 @@ public sealed class SyncSession
             var newState = ComputeSyncedState(leftAfter.Entries, rightAfter.Entries, _timeTolerance);
             var unreadable = ctx.Left.FailedPaths.Concat(ctx.Right.FailedPaths)
                 .Concat(leftAfter.FailedPaths).Concat(rightAfter.FailedPaths).ToList();
+            FaultHook?.Invoke(FaultPoints.AfterExecuteBeforeSaveState, null);
             _store.SaveState(_jobId, KeepUnreadableState(newState, stateBefore, unreadable));
             UpdateCache(leftAfter.RootMissing ? null : leftAfter.Entries, rightAfter.RootMissing ? null : rightAfter.Entries);
             PersistCache();

@@ -236,6 +236,15 @@ Trạng thái: đã commit lên `main` (15/10/2026), bộ cài 0.3.0 build lại
 - **CI GitHub Actions** (workflow `test-windows.yml` do canona thêm): lần đầu 155/156 — ca "Liên tục Mirror, đích chưa có: tạo folder rồi theo dõi NGAY" FAIL trên runner chậm. Race có sẵn: watcher chỉ gắn SAU khi lần chạy tạo folder kết thúc → sửa ở đích trong khoảng đó không ai nghe. Sửa: gắn watcher xong thì chạy bắt kịp 1 lần (`ScheduleDebounced`).
 - **Bài học test**: `| Select-Object -First n` cắt pipeline làm script UI dừng trước `Stop-Process` → app thử còn chạy, giữ mutex, lần chạy sau không mở được. PowerShell 5.1 `Get-Content -Raw`/`Set-Content` đọc ghi ANSI + BOM → hỏng ký tự Unicode trong `.cs` — sửa file bằng Python UTF-8.
 
+## Bộ test khó giai đoạn 1b — HARD-G5 + HARD-D1 (16/10/2026, Claude, issue #4)
+
+Commit: xem PR của nhánh `claude/issue-4-20261016-1717`.
+
+- Yêu cầu: G5 (sửa Job 100 lần không nhân đôi watcher/timer) và D1 (4 nguồn kích hoạt cùng lúc trên 1 Job).
+- Lỗi phát hiện: **không có** — cả 11 ca mới PASS ngay trên code cũ nên không sửa engine (đúng quy tắc test trước, sửa sau).
+- Thiết kế test (`tests/FolderSync.Core.Harness/JobRunnerHardTests.cs`): G5 dùng đúng thứ tự `MainWindow.ReloadJobs` (Dispose cũ → tạo mới → `InheritHistory` → `StartAuto`), kiểm bằng `sync_runs`, số sự kiện `Started` và reflection vào `_watchers/_debounce/_periodic/_rewatch/_disposed` của 100 runner cũ. D1 chặn phiên thắng khóa ở điểm `Planned` bằng `BlockingSink` rồi mới thả → không dựa vào sleep, số executor = số lần chạm `Planned`.
+- Kiểm chứng: harness 167 PASS + 1 FAIL (ca watcher Linux đã biết, ngoài phạm vi), 3 lần chạy giống hệt.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

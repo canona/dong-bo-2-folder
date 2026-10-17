@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\packaging\build-release.ps1 -IsccPath
 - `FolderSync.slnx` là định dạng solution mới, cần .NET SDK ≥ 9.0.200. Máy chỉ có SDK 8 thì build từng `.csproj` như trên.
 - Đang chạy app thì `dotnet build` App sẽ lỗi khóa file exe → đóng app trước (`taskkill /IM FolderSync.App.exe /F`).
 - Build WPF bị ngắt giữa chừng có thể để lại `src/FolderSync.App/FolderSync.App_*_wpftmp.csproj` → xóa, không commit.
-- Hiện tại: **156/156 PASS** (20 P0 + 15 P1 + 13 P2 + 26 RUN + 33 SAFE + 30 OPT + 12 PERF + 7 BW). Harness tự dọn thư mục tạm `%TEMP%\foldersync-*` khi chạy xong. Build App 0 error / 0 warning.
+- Hiện tại: **180 test** (20 P0 + 15 P1 + 13 P2 + 26 RUN + 33 SAFE + 30 OPT + 12 PERF + 7 BW + 12 HARD-1b + 12 HARD-1c; Linux: 179 PASS + 1 FAIL watcher đã biết). Harness tự dọn thư mục tạm `%TEMP%\foldersync-*` khi chạy xong. Build App 0 error / 0 warning.
 
 ## Cấu trúc
 

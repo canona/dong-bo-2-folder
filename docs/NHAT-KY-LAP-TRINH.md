@@ -236,6 +236,28 @@ Trạng thái: đã commit lên `main` (15/10/2026), bộ cài 0.3.0 build lại
 - **CI GitHub Actions** (workflow `test-windows.yml` do canona thêm): lần đầu 155/156 — ca "Liên tục Mirror, đích chưa có: tạo folder rồi theo dõi NGAY" FAIL trên runner chậm. Race có sẵn: watcher chỉ gắn SAU khi lần chạy tạo folder kết thúc → sửa ở đích trong khoảng đó không ai nghe. Sửa: gắn watcher xong thì chạy bắt kịp 1 lần (`ScheduleDebounced`).
 - **Bài học test**: `| Select-Object -First n` cắt pipeline làm script UI dừng trước `Stop-Process` → app thử còn chạy, giữ mutex, lần chạy sau không mở được. PowerShell 5.1 `Get-Content -Raw`/`Set-Content` đọc ghi ANSI + BOM → hỏng ký tự Unicode trong `.cs` — sửa file bằng Python UTF-8.
 
+## Đợt 17 — Bộ test khó giai đoạn 1a: Oracle + chích lỗi, HARD-B1 / HARD-B3 (16/10/2026, Claude Code)
+
+Trạng thái: nhánh `test/hard-tests`, PR vào `main` (chưa merge). Issue #2.
+
+- **Thêm**: `HardOracle.cs` (6 hàm kiểm bất biến ĐỘC LẬP với engine: tự duyệt thư mục, tự tính SHA-256, đọc thẳng SQLite), điểm móc chích lỗi `FaultPoints` (9 điểm: AfterScan, BeforeFirstAction, MidCopy, AfterTempWrite, BeforeRename, AfterRename, BeforeHistoryMove, AfterExecuteBeforeSaveState, DuringSaveState) qua `FaultHook` internal của `SyncSession` / `SyncExecutor` / `SqliteStateStore` — mặc định null nên sản xuất không đổi; `HardFaultTests.cs` (27 ca B1 + 15 ca B3).
+- **Lỗi thật sửa**: `SyncExecutor.Remember` ghi vào cache hash entry của file NGUỒN bằng size/mtime đọc lại SAU khi chép nhưng hash của nội dung ĐÃ chép. Nguồn bị sửa (cùng size) giữa lúc kiểm chứng file tạm và lúc ghi cache → cache nhiễm (mtime mới + hash cũ) → quét lại thấy 2 phía "cùng hash" → state ghi "đã đồng bộ" cho 2 file khác nội dung, lần sau không bao giờ chép lại (Backup/Mirror). Sửa: dùng size/mtime đã kiểm chứng lúc chép (`CopiedFile`).
+- **Chưa sửa (xem báo cáo trong issue #2)**: state bỏ entry của file đổi giữa lúc chạy → 2 chiều có thể hồi sinh file người dùng vừa xóa/đổi tên hoặc sinh Conflict dù chỉ 1 phía đổi.
+- **Baseline**: trên Linux CI (.NET SDK 10) harness là 155/156 do ca watcher "RUN Lien tuc Backup: tao file moi o nguon" (có sẵn, không liên quan). Kết quả sau đợt này: 197 PASS + đúng ca đó FAIL.
+
+---
+
+## Đợt 18 — Sửa 3 phát hiện của HARD-B3 trên PR #3 (16/10/2026, Claude Code)
+
+Commit: xem lịch sử nhánh `claude/issue-2-20261016-0853`.
+
+- Test siết trước (FAIL trên code cũ: 194 PASS / 4 FAIL): bỏ ngoại lệ `staleTwoWay` (2 ca Sửa nguồn × 2 chiều), ca "xóa nguồn" chuyển sang điểm `MidCopy` + kiểm "không hồi sinh".
+- (1) Xung đột giả 2 chiều khi nguồn đổi SAU khi chép: state bỏ file đó (2 phía không còn giống) → lần sau "2 phía khác nhau, không có state" = Conflict. Sửa: `SyncResult.VerifiedCopies` + `SyncSession.KeepVerifiedCopies` ghi bản đã kiểm chứng lúc chép làm mốc state, chỉ khi DÍCH vẫn đúng là bản đó.
+- (2) File xóa/đổi tên giữa lúc chạy bị chép ngược (hồi sinh): hành động lỗi làm state bỏ file → file còn ở phía kia nhìn như "file mới". Sửa: `SyncResult.FailedPaths` đưa vào `KeepUnreadableState` (cùng cơ chế với file không đọc được) → lần sau thành lệnh xóa phía kia (có history).
+- (3) `*.tmp-sync` mồ côi khi nguồn biến mất giữa lúc chép: KHÔNG tái hiện được trên Linux (mọi đường lỗi của `AtomicCopy` đã xóa file tạm; ca xóa nguồn ở `MidCopy` PASS trên code cũ) → không sửa. Cần thử trên Windows (nguồn mở không có `FileShare.Delete`).
+- Đánh đổi: state có thể giữ mốc cũ không còn khớp đĩa (Oracle (b) có tham số `staleOk`, chỉ chấp nhận khi hash mốc khớp ≥ 1 phía thật).
+- Kiểm chứng: harness 197 PASS + 1 FAIL (ca watcher có sẵn), 3 lần liên tiếp giống hệt.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

@@ -20,6 +20,9 @@ public sealed class SqliteStateStore : IDisposable
     // cac Job chay song song (JobRunner) phai tuan tu hoa moi truy cap qua khoa nay.
     private readonly object _sync = new();
 
+    /// <summary>Diem chot chich loi DuringSaveState (xem FaultPoints) - mac dinh null, chi harness gan.</summary>
+    internal Action<string, string?>? FaultHook { get; set; }
+
     public SqliteStateStore(string dbPath)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
@@ -229,6 +232,7 @@ public sealed class SqliteStateStore : IDisposable
                 del.Parameters.AddWithValue("$job", jobId);
                 del.ExecuteNonQuery();
             }
+            FaultHook?.Invoke(FolderSync.Core.Engine.FaultPoints.DuringSaveState, null);
             using var ins = _conn.CreateCommand();
             ins.Transaction = tx;
             ins.CommandText = """

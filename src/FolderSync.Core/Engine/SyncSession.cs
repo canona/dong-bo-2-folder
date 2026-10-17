@@ -165,7 +165,9 @@ public sealed class SyncSession
 
     // ================= Quet + hash =================
 
-    private ScanResult ScanSide(bool left, IProgress<SyncProgress>? progress, CancellationToken ct)
+    // trustCache=false: khong dung hash cache (cache khoa theo size+mtime nen file bi lat bit / sua giu nguyen
+    // size+mtime se nhan lai hash CU -> FullContentCompare ("hash toan bo moi lan") thanh vo nghia).
+    private ScanResult ScanSide(bool left, IProgress<SyncProgress>? progress, CancellationToken ct, bool trustCache = true)
     {
         var root = left ? _leftRoot : _rightRoot;
         var side = left ? "Trai" : "Phai";
@@ -173,7 +175,7 @@ public sealed class SyncSession
             : (n, dir) => progress.Report(new SyncProgress(SyncProgressStage.Scanning, 0, 0, null,
                 BytesDone: n, Message: $"{side}: {(dir.Length == 0 ? "(goc)" : dir)}"));
         // hashAllFiles: hash moi file chua co trong cache (cham) - mac dinh chi hash file mo ho (HashPlanner)
-        return _scanner.Scan(root, computeHashes: _hashAllFiles, left ? _cache.Left : _cache.Right, report, ct);
+        return _scanner.Scan(root, computeHashes: _hashAllFiles, trustCache ? (left ? _cache.Left : _cache.Right) : null, report, ct);
     }
 
     /// <summary>Hash cac file trong danh sach, ghi thang vao dictionary. File khong doc duoc -> vao failed (SkipUnreadable).</summary>
@@ -259,8 +261,8 @@ public sealed class SyncSession
     private AnalysisContext Analyze(IProgress<SyncProgress>? progress, CancellationToken ct)
     {
         EnsureCacheLoaded();
-        var leftScan = ScanSide(left: true, progress, ct);
-        var rightScan = ScanSide(left: false, progress, ct);
+        var leftScan = ScanSide(left: true, progress, ct, trustCache: !_hashAllFiles);
+        var rightScan = ScanSide(left: false, progress, ct, trustCache: !_hashAllFiles);
         var state = _store.LoadState(_jobId);
 
         var left = new Dictionary<string, FileEntry>(leftScan.Entries, StringComparer.OrdinalIgnoreCase);

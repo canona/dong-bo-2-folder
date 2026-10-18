@@ -91,6 +91,7 @@ public static class TimeCorruptionHardTests
         F1BitRot();
         H1CorruptDb();
         D2SharedDestination();
+        D2BlockSharedFolders();
         return (_pass, _fail);
     }
 
@@ -368,7 +369,46 @@ public static class TimeCorruptionHardTests
         }
     }
 
-    // ============================ HARD-D2 (characterization, CHI GHI NHAN) ============================
+    // ============================ HARD-D2 (chan han: khong cho 2 Job dung chung folder) ============================
+    // Quyet dinh chu repo 18/10/2026: UpsertJob tu choi Job moi/Job sua co folder Trai hoac Phai trung Trai/Phai cua Job khac.
+    private static bool TryUpsert(SqliteStateStore store, string id, string l, string r)
+    {
+        try { store.UpsertJob(id, id, l, r, SyncMode.BackupOneWay, ConflictPolicy.NewerWins); return true; }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    private static void D2BlockSharedFolders()
+    {
+        var a = NewTempDir("d2x-a"); var b = NewTempDir("d2x-b"); var c = NewTempDir("d2x-c"); var d = NewTempDir("d2x-d"); var e = NewTempDir("d2x-e");
+        var (store, _) = NewStore("d2x");
+        using (store)
+        {
+            Check("D2 chan: Job dau (A,B) tao binh thuong", TryUpsert(store, "j1", a, b));
+            Check("D2 chan: trung folder Trai (A,C) bi tu choi", !TryUpsert(store, "j2", a, c));
+            Check("D2 chan: trung folder Phai (C,B) bi tu choi", !TryUpsert(store, "j3", c, b));
+            Check("D2 chan: trung cheo Trai-Phai (B,C) bi tu choi", !TryUpsert(store, "j4", b, c));
+            Check("D2 chan: trung cheo Phai-Trai (C,A) bi tu choi", !TryUpsert(store, "j5", c, a));
+            Check("D2 chan: so sanh theo duong dan chuan hoa (hoa/thuong + dau phan cach cuoi)",
+                !TryUpsert(store, "j6", a.ToUpperInvariant() + Path.DirectorySeparatorChar, c));
+            Check("D2 chan: Job bi tu choi khong duoc luu vao DB", store.ListJobs().Count == 1);
+            Check("D2 chan: 2 Job khong trung folder (C,D) tao binh thuong", TryUpsert(store, "j7", c, d));
+            Check("D2 chan: sua Job j7 thanh trung folder Job khac (C,A) bi tu choi", !TryUpsert(store, "j7", c, a));
+            var j7 = store.ListJobs().Single(j => j.Id == "j7");
+            Check("D2 chan: Job sua bi tu choi giu nguyen cau hinh cu", j7.LeftRoot == c && j7.RightRoot == d);
+            Check("D2 chan: sua Job j7 sang folder tu do (C,E) binh thuong", TryUpsert(store, "j7", c, e));
+            Check("D2 chan: luu lai Job voi folder cua chinh no (doi ten/che do) khong bi chan", TryUpsert(store, "j1", a, b));
+            Check("D2 chan: Job j1 doi cho Trai<->Phai cua chinh no khong bi chan", TryUpsert(store, "j1", b, a));
+        }
+    }
+
+    private static bool RunJobOnce(SqliteStateStore store, JobRecord j, string dest)
+    {
+        using var runner = new JobRunner(j, store);
+        var res = RunJob(runner, "d2")?.Result;
+        return res is { Aborted: false } && res.Copied == 6 && CountFiles(dest) == 6;
+    }
+
+    // ============================ HARD-D2 (characterization: nhanh cu chi chay khi KHONG co chan, nay khong con toi) ============================
     private static void D2SharedDestination()
     {
         foreach (var (mode, name) in new[] { (SyncMode.BackupOneWay, "Backup"), (SyncMode.MirrorOneWay, "Mirror"), (SyncMode.TwoWay, "2 chieu") })
@@ -379,7 +419,15 @@ public static class TimeCorruptionHardTests
             using (store)
             {
                 var ja = AddJob(store, "A", la, dest, mode, new JobOptions { CleanupHistory = false });
-                var jb = AddJob(store, "B", lb, dest, mode, new JobOptions { CleanupHistory = false });
+                // Hanh vi MOI (da co co che chan): Job B dung chung Dich voi Job A bi tu choi ngay luc tao.
+                string? blocked = null;
+                JobRecord? jb = null;
+                try { jb = AddJob(store, "B", lb, dest, mode, new JobOptions { CleanupHistory = false }); }
+                catch (SharedFolderException ex) { blocked = ex.Message; }
+                Check($"D2 {name}: Job B dung chung folder Dich voi Job A bi chan luc tao, bao loi ro rang, DB chi con 1 Job",
+                    blocked is not null && blocked.Contains("Job 'A'") && store.ListJobs().Count == 1, blocked ?? "khong bi chan");
+                if (jb is null) { Check($"D2 {name}: Job A van chay binh thuong sau khi Job B bi chan",
+                    RunJobOnce(store, ja, dest)); continue; }
                 var rows = new List<string>();
                 var exceptions = new List<string>();
                 var perRound = new List<int>();

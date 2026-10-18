@@ -6,6 +6,14 @@ namespace FolderSync.Core.Storage;
 public sealed record JobRecord(string Id, string Name, string LeftRoot, string RightRoot,
     SyncMode Mode, ConflictPolicy Policy, string SettingsJson = "{}");
 
+/// <summary>Job moi/Job sua co folder trung folder Trai/Phai cua Job khac. Message hien thang cho nguoi dung.</summary>
+public sealed class SharedFolderException : InvalidOperationException
+{
+    public SharedFolderException(string folder, string otherJobName)
+        : base($"Folder '{folder}' dang duoc Job '{otherJobName}' su dung. Hai Job khong duoc dung chung folder " +
+               "(se chay song song va ghi de/xoa file cua nhau). Hay chon folder khac hoac sua/xoa Job kia truoc.") { }
+}
+
 /// <summary>
 /// Kho trang thai dong bo trong 1 file SQLite duy nhat (Ke hoach muc 3, 10):
 /// - jobs: dinh nghia Job (2 folder, che do, chinh sach xung dot).
@@ -149,6 +157,23 @@ public sealed class SqliteStateStore : IDisposable
                 using var reader = get.ExecuteReader();
                 if (reader.Read())
                     rootsChanged = !SamePath(reader.GetString(0), leftRoot) || !SamePath(reader.GetString(1), rightRoot);
+            }
+
+            // 2 Job dung chung folder se chay song song va giam len nhau (Mirror xoa file cua Job kia) -> chan
+            // ngay o cua ghi duy nhat; moi duong tao/sua Job cua app deu di qua day. Chua ghi gi truoc khi chan.
+            using (var others = _conn.CreateCommand())
+            {
+                others.Transaction = tx;
+                others.CommandText = "SELECT name, left_root, right_root FROM jobs WHERE id <> $id";
+                others.Parameters.AddWithValue("$id", id);
+                using var reader = others.ExecuteReader();
+                while (reader.Read())
+                {
+                    foreach (var mine in new[] { leftRoot, rightRoot })
+                        foreach (var theirs in new[] { reader.GetString(1), reader.GetString(2) })
+                            if (SamePath(mine, theirs))
+                                throw new SharedFolderException(mine, reader.GetString(0));
+                }
             }
 
             using var cmd = _conn.CreateCommand();

@@ -68,5 +68,5 @@ docs/
   - **Tắt so hash:** 2 file giống hệt (cùng size + mtime trong dung sai) không còn thành xung đột giả; `ComputeSyncedState` so cả mtime khi thiếu hash. Giới hạn còn lại (không sửa được nếu không hash): file bị sửa mà giữ nguyên size và mtime — UI đã cảnh báo ở tab Nâng cao.
   - **Job cũ giữ hành vi cũ:** migration ghi `JobOptions.Legacy()` (không tự dọn history, không copy creation time/thuộc tính) cho Job có sẵn; `FromJson("{}")` cũng trả Legacy.
   - Kiểm chứng: harness **96/96 PASS** (thêm 10 ca trong `OptionsTests.cs`, chạy qua Scanner/Session thật).
-  - Bộ test khó giai đoạn 3 (E4/F1/H1/D2): harness Linux **182 PASS / 3 FAIL** (1 ca watcher Linux đã biết + 2 repro P0 của H1 chờ chủ repo quyết); sửa `FullContentCompare` không dùng cache hash.
+  - Bộ test khó giai đoạn 3 (E4/F1/H1/D2): harness Linux **198 PASS / 3 FAIL** (1 ca watcher Linux đã biết + 2 repro P0 của H1 chờ chủ repo quyết); sửa `FullContentCompare` không dùng cache hash; D2: chặn tạo/sửa Job dùng chung folder với Job khác (`SharedFolderException`).
 - Việc còn lại để dùng thật hằng ngày (P3): chạy thử trên máy Windows thật với 2 folder thật + 1 USB thật trong 1-2 tuần; tối ưu hash BLAKE3 và quét USN Journal cho folder lớn; chạy nền kiểu Windows Service cho phần Tự động (hiện chạy khi app đang mở).

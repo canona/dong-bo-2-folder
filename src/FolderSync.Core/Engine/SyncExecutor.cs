@@ -237,8 +237,10 @@ public sealed class SyncExecutor
 
         bool Clashes(SyncAction a)
         {
-            if (a.Kind is not (SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight)) return false;
-            bool left = a.Kind == SyncActionKind.DeleteLeft;
+            // Move cung "xoa" duong dan nguon (vd d09/x -> z trong khi chep file d09): phai chay truoc lenh chep
+            if (a.Kind is not (SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight
+                or SyncActionKind.MoveLeft or SyncActionKind.MoveRight)) return false;
+            bool left = a.Kind is SyncActionKind.DeleteLeft or SyncActionKind.MoveLeft;
             var paths = left ? createPaths.Left : createPaths.Right;
             var parents = left ? createParents.Left : createParents.Right;
             if (parents.Contains(a.RelativePath)) return true; // xoa file 'a', roi tao 'a/x'
@@ -490,6 +492,7 @@ public sealed class SyncExecutor
         bool caseOnly = string.Equals(from, to, StringComparison.OrdinalIgnoreCase);
         if (!caseOnly && File.Exists(to)) PreserveExisting(to, root, action.TargetPath!);
         File.Move(from, to, overwrite: true);
+        PruneEmptyParents(root, action.RelativePath);
         return to;
     }
 

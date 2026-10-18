@@ -80,7 +80,73 @@ public static class HardMonkeyTests
             }
             m.Cleanup();
         }
+        KindSwapCases();
         return (_pass, _fail);
+    }
+
+    // ---------------- ca hoi quy xac dinh: doi file<->thu muc cung ten (tach tu loi A1 tim duoc) ----------------
+    private static void KindSwapCases()
+    {
+        Console.WriteLine("--- HARD-A1: doi file<->thu muc cung ten (ca xac dinh, tach tu fuzz) ---");
+        static void WriteDisk(string root, string rel, string content, DateTime mtime) => Monkey.WriteDisk(root, rel, content, mtime);
+        static Dictionary<string, MFile> ReadDisk(string root, List<string> tmp) => Monkey.ReadDisk(root, tmp);
+        // (che do, phia doi, thu muc->file ? true : file->thu muc)
+        foreach (var (mode, leftSide, dirToFile) in new[]
+        {
+            (SyncMode.TwoWay, true, true), (SyncMode.TwoWay, false, true),
+            (SyncMode.TwoWay, true, false), (SyncMode.TwoWay, false, false),
+            (SyncMode.MirrorOneWay, true, true), (SyncMode.MirrorOneWay, true, false),
+            (SyncMode.MirrorOneWay, false, true), (SyncMode.MirrorOneWay, false, false),
+        })
+        {
+            var baseDir = Path.Combine(Path.GetTempPath(), $"foldersync-hard-a1k-{Guid.NewGuid():N}");
+            var left = Path.Combine(baseDir, "L"); var right = Path.Combine(baseDir, "R");
+            Directory.CreateDirectory(left); Directory.CreateDirectory(right);
+            using var store = new SqliteStateStore(Path.Combine(baseDir, "s.db"));
+            var pol = ConflictPolicy.NewerWins;
+            store.UpsertJob("k", "k", left, right, mode, pol, new JobOptions().ToJson());
+            var session = new SyncSession("k", left, right, mode, store, policy: pol, scanCache: new ScanCache());
+            for (int i = 0; i < 10; i++) WriteDisk(left, $"f/f{i}.txt", $"filler-{i}", T0.AddSeconds(i * 10));
+            // dirToFile: co thu muc a/ (3 file) o ca 2 phia roi 1 phia doi thanh FILE a
+            // file->thu muc: co FILE a o ca 2 phia roi 1 phia doi thanh THU MUC a/ (1 file)
+            if (dirToFile) for (int i = 0; i < 3; i++) WriteDisk(left, $"a/x{i}.txt", $"x{i}", T0.AddSeconds(500 + i * 10));
+            else WriteDisk(left, "a", "file-a", T0.AddSeconds(500));
+            session.Run();
+            var side = leftSide ? left : right;
+            string expectFile;
+            if (dirToFile) { Directory.Delete(Path.Combine(side, "a"), true); WriteDisk(side, "a", expectFile = "file-moi-a", T0.AddSeconds(2000)); }
+            else { File.Delete(Path.Combine(side, "a")); WriteDisk(side, "a/s.txt", expectFile = "con-moi", T0.AddSeconds(2000)); }
+            var o = session.Run();
+            var tmp = new List<string>();
+            var dl = ReadDisk(left, tmp); var dr = ReadDisk(right, tmp);
+            // Trai la nguon cua Mirror: neu phia doi la Phai thi Phai bi keo ve giong Trai (cau truc cu)
+            var problems = new List<string>();
+            bool mirrorRightChanged = mode == SyncMode.MirrorOneWay && !leftSide;
+            Dictionary<string, string> exp;
+            if (mirrorRightChanged)
+            {
+                exp = dirToFile
+                    ? new() { ["a/x0.txt"] = "x0", ["a/x1.txt"] = "x1", ["a/x2.txt"] = "x2" }
+                    : new() { ["a"] = "file-a" };
+            }
+            else exp = dirToFile ? new() { ["a"] = expectFile } : new() { ["a/s.txt"] = expectFile };
+            for (int i = 0; i < 10; i++) exp[$"f/f{i}.txt"] = $"filler-{i}";
+            foreach (var (nm, d) in new[] { ("Trai", dl), ("Phai", dr) })
+            {
+                var diffs = exp.Keys.Concat(d.Keys.Select(k => k)).Distinct().Where(k => exp.GetValueOrDefault(k) != d.GetValueOrDefault(k)?.Content)
+                    .OrderBy(k => k, StringComparer.Ordinal).ToList();
+                if (diffs.Count > 0) problems.Add($"{nm} lech: {string.Join(",", diffs.Take(5))}");
+            }
+            if (o.Result!.Aborted || o.Result.Errors.Count > 0) problems.Add($"loi: {o.Result.AbortReason} {string.Join("; ", o.Result.Errors.Take(3))}");
+            if (tmp.Count > 0) problems.Add($"sot tmp {string.Join(",", tmp)}");
+            var again = session.AnalyzeOnly().Actions.Where(a => a.Kind != SyncActionKind.Skip).ToList();
+            if (again.Count > 0) problems.Add($"dong bo lan 2 con {again.Count} hanh dong: {string.Join(" ;; ", again.Take(3).Select(a => $"{a.Kind} {a.RelativePath}"))}");
+            Check($"A1 {mode} {(leftSide ? "Trai" : "Phai")} doi {(dirToFile ? "thu muc -> file" : "file -> thu muc")} cung ten 'a'",
+                problems.Count == 0, $"seed={DefaultSeed} " + string.Join(" | ", problems));
+            store.Dispose();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { Directory.Delete(baseDir, true); } catch (Exception) { /* Program.cs don sau */ }
+        }
     }
 
     private sealed record MFile(string Content, DateTime Mtime);
@@ -143,7 +209,7 @@ public static class HardMonkeyTests
         private static string Full(string root, string rel) => Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar));
         private DateTime Stamp(int extraSec = 0) => T1.AddSeconds(Step * 10 + extraSec);
 
-        private static void WriteDisk(string root, string rel, string content, DateTime mtime)
+        internal static void WriteDisk(string root, string rel, string content, DateTime mtime)
         {
             var full = Full(root, rel);
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
@@ -522,7 +588,7 @@ public static class HardMonkeyTests
         }
 
         // ---------------- doc dia doc lap ----------------
-        private static Dictionary<string, MFile> ReadDisk(string root, List<string> tmp)
+        internal static Dictionary<string, MFile> ReadDisk(string root, List<string> tmp)
         {
             var map = new Dictionary<string, MFile>(StringComparer.Ordinal);
             foreach (var full in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))

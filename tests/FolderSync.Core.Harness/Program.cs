@@ -76,6 +76,8 @@ var monkey = HardMonkeyTests.Run();
 pass += monkey.pass; fail += monkey.fail;
 var renames = HardRenameTests.Run();
 pass += renames.pass; fail += renames.fail;
+var conflicts = HardConflictTests.Run();
+pass += conflicts.pass; fail += conflicts.fail;
 
 // Don thu muc tam cua moi test (tien to "foldersync-") - khong don thi moi lan chay de lai hang tram MB
 // trong %TEMP% va tung lam DAY O C: (SQLite bao "database or disk is full").

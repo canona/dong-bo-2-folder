@@ -245,6 +245,18 @@ Commit: xem PR của nhánh `claude/issue-4-20261016-1717`.
 - Thiết kế test (`tests/FolderSync.Core.Harness/JobRunnerHardTests.cs`): G5 dùng đúng thứ tự `MainWindow.ReloadJobs` (Dispose cũ → tạo mới → `InheritHistory` → `StartAuto`), kiểm bằng `sync_runs`, số sự kiện `Started` và reflection vào `_watchers/_debounce/_periodic/_rewatch/_disposed` của 100 runner cũ. D1 chặn phiên thắng khóa ở điểm `Planned` bằng `BlockingSink` rồi mới thả → không dựa vào sleep, số executor = số lần chạm `Planned`.
 - Kiểm chứng: harness 167 PASS + 1 FAIL (ca watcher Linux đã biết, ngoài phạm vi), 3 lần chạy giống hệt.
 
+## Bộ test khó giai đoạn 2 — HARD-A1 + A2 + J1 (18/10/2026, Claude, issue #7, PR #10)
+
+- Yêu cầu: fuzz có seed 20261015 với mô hình tham chiếu độc lập (5 cấu hình: Backup, Mirror, 2 chiều × NewerWins/LeftWins/RightWins), đổi tên mơ hồ, ma trận xung đột 2 chiều × 5 chính sách.
+- Test: `HardMonkeyTests.cs` (A1, `HARD_MONKEY_STEPS` hoặc `--monkey-steps=N`), `HardRenameTests.cs` (A2), `HardConflictTests.cs` (J1).
+- Lỗi engine tìm ra (mỗi lỗi 1 commit, FAIL trước → PASS sau):
+  1. Đổi file↔thư mục cùng tên: lệnh chép 'a' chạy trước lệnh xóa 'a/…' → lỗi I/O, hội tụ chậm (`DeletesFirstWhenPathKindClashes`, commit 4e9ff52).
+  2. `RenameDetector` ghép `Move d03/f143.txt → d03` khi đích là thư mục cha của nguồn → lỗi I/O (200 bước: 202 PASS/17 FAIL → 211/8).
+  3. Lệnh Move không được tính là "xóa đường dẫn nguồn" khi sắp thứ tự → chép file 'd09' chạy trước, thư mục d09 chưa rỗng (211/8 → 214/5).
+  4. File vừa Move không có hash trong cache → mtime 2 phía lệch → file đã đồng bộ vẫn rơi khỏi state (214/5 → 218/1).
+- Bài học: commit 4e9ff52 chỉ kiểm ở 10 bước (218 PASS) nên lọt lỗi 2–4; CI Windows ở 2000 bước mới lộ. Luôn kiểm bản sửa fuzz ở cấu hình chuẩn.
+- Mục OPEN (chưa sửa, chờ chủ repo quyết): OPEN-1 Manual + Xóa/Sửa chỉ giữ xung đột 1 lần chạy; OPEN-2 file↔thư mục xung đột với bản sửa không hội tụ (không mất dữ liệu).
+
 ---
 
 ## Mẫu cho đợt tiếp theo

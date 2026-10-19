@@ -341,7 +341,10 @@ public sealed class SyncExecutor
         string srcHash;
         using (var hasher = System.Security.Cryptography.IncrementalHash.CreateHash(
                    System.Security.Cryptography.HashAlgorithmName.SHA256))
-        using (var src = new FileStream(sourceFull, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, CopyBufferSize))
+        // FileShare.Delete: tren Windows, thieu co nay thi nguoi dung KHONG xoa/doi ten duoc file nguon dang chep
+        // (loi sharing violation) - viec xoa that bai am tham roi lan sau file bi chep nguoc / hoi sinh.
+        using (var src = new FileStream(sourceFull, FileMode.Open, FileAccess.Read,
+                   FileShare.ReadWrite | FileShare.Delete, CopyBufferSize))
         using (var dst = new FileStream(tmpFull, FileMode.Create, FileAccess.Write, FileShare.None, CopyBufferSize))
         {
             // Bi gioi han toc do: khoi nho hon (~1/10 giay du lieu) de tien trinh/toc do hien muot

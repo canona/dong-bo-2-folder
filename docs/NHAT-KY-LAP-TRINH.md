@@ -258,6 +258,13 @@ Commit: xem lịch sử nhánh `claude/issue-2-20261016-0853`.
 - Đánh đổi: state có thể giữ mốc cũ không còn khớp đĩa (Oracle (b) có tham số `staleOk`, chỉ chấp nhận khi hash mốc khớp ≥ 1 phía thật).
 - Kiểm chứng: harness 197 PASS + 1 FAIL (ca watcher có sẵn), 3 lần liên tiếp giống hệt.
 
+## Đợt 19 — Phát hiện 3 tái hiện được trên Windows: nguồn mở thiếu FileShare.Delete (19/10/2026, Claude Code)
+
+- Bằng chứng: CI Windows (run 38883992180) + máy chủ repo: 3 ca `HARD-B3 <mode> / xoa file nguon giua luc chep` FAIL "a.txt da xoa o Trai bi hoi sinh"; Linux PASS.
+- Nguyên nhân gốc (suy ra từ code + log, chưa chạy được trên Windows): `CopyAndVerify` mở nguồn với `FileShare.ReadWrite` (không có `Delete`) → trên Windows xóa/đổi tên file đang chép bị sharing violation, lệnh xóa của người dùng thất bại và file còn nguyên (Linux không có khái niệm này).
+- Sửa: mở nguồn với `FileShare.ReadWrite | FileShare.Delete`. Xóa giữa lúc chép → bước kiểm chứng thấy nguồn mất → xóa file tạm, báo lỗi I/O → `FailedPaths` giữ state → lần sau xóa lan truyền. Không sửa test.
+- Kiểm chứng: Linux 197 PASS + 1 FAIL (watcher có sẵn) x3. Windows: chờ CI + chủ repo chạy lại.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

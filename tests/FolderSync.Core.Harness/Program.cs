@@ -74,6 +74,8 @@ var hard1a = HardFaultTests.Run();
 pass += hard1a.pass; fail += hard1a.fail;
 var hard = JobRunnerHardTests.Run();
 pass += hard.pass; fail += hard.fail;
+var hard3 = TimeCorruptionHardTests.Run();
+pass += hard3.pass; fail += hard3.fail;
 var monkey = HardMonkeyTests.Run();
 pass += monkey.pass; fail += monkey.fail;
 var renames = HardRenameTests.Run();

@@ -1342,12 +1342,28 @@ public partial class MainWindow : Window
         new HistoryWindow(runner.Job, runner.Options) { Owner = this }.ShowDialog();
     }
 
+    /// <summary>Luu Job qua store; folder trung Job khac (SharedFolderException) thi bao loi ro rang va KHONG luu.</summary>
+    private bool TryUpsertJob(JobRecord job, out bool stateReset)
+    {
+        try
+        {
+            stateReset = _store.UpsertJob(job.Id, job.Name, job.LeftRoot, job.RightRoot, job.Mode, job.Policy, job.SettingsJson);
+            return true;
+        }
+        catch (SharedFolderException ex)
+        {
+            stateReset = false;
+            MessageBox.Show(ex.Message, "Khong the luu Job", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+    }
+
     private void AddJob_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new JobOptionsWindow(null) { Owner = this };
         if (dlg.ShowDialog() == true && dlg.Result is { } job)
         {
-            _store.UpsertJob(job.Id, job.Name, job.LeftRoot, job.RightRoot, job.Mode, job.Policy, job.SettingsJson);
+            if (!TryUpsertJob(job, out _)) return;
             ReloadJobs(selectId: job.Id);
             Log($"Da them Job '{job.Name}'.");
         }
@@ -1392,7 +1408,7 @@ public partial class MainWindow : Window
 
         var newLeft = left ? chosen : job.LeftRoot;
         var newRight = left ? job.RightRoot : chosen;
-        bool reset = _store.UpsertJob(job.Id, job.Name, newLeft, newRight, job.Mode, job.Policy, job.SettingsJson);
+        if (!TryUpsertJob(job with { LeftRoot = newLeft, RightRoot = newRight }, out bool reset)) return;
         ReloadJobs(selectId: job.Id); // runner moi theo doi folder moi
         Log($"Da doi folder {side} cua Job '{job.Name}' thanh: {chosen}" +
             (reset ? " (da xoa trang thai dong bo cu)." : "."));
@@ -1445,7 +1461,7 @@ public partial class MainWindow : Window
         if (MessageBox.Show($"Doi Job '{job.Name}' tu \"{ModeName(job.Mode)}\"\nsang \"{ModeName(mode)}\"?\n\n{effect}{when}",
                 "Doi che do dong bo", MessageBoxButton.OKCancel, icon) != MessageBoxResult.OK) return;
 
-        _store.UpsertJob(job.Id, job.Name, job.LeftRoot, job.RightRoot, mode, job.Policy, job.SettingsJson);
+        if (!TryUpsertJob(job with { Mode = mode }, out _)) return;
         ReloadJobs(selectId: job.Id);
         Log($"Da doi che do Job '{job.Name}': {ModeName(job.Mode)} -> {ModeName(mode)}.");
     }
@@ -1459,7 +1475,7 @@ public partial class MainWindow : Window
         var dlg = new JobOptionsWindow(job) { Owner = this };
         if (dlg.ShowDialog() == true && dlg.Result is { } edited)
         {
-            bool reset = _store.UpsertJob(edited.Id, edited.Name, edited.LeftRoot, edited.RightRoot, edited.Mode, edited.Policy, edited.SettingsJson);
+            if (!TryUpsertJob(edited, out bool reset)) return;
             ReloadJobs(selectId: edited.Id);
             Log($"Da sua Job '{edited.Name}'." +
                 (reset ? " Folder da doi -> da xoa trang thai dong bo cu, nen Phan tich lai truoc khi Dong bo." : ""));
@@ -1511,7 +1527,7 @@ public partial class MainWindow : Window
         if (job is null) return;
         var o = JobOptions.FromJson(job.SettingsJson);
         o.AutoOnFileChange = !o.AutoOnFileChange;
-        _store.UpsertJob(job.Id, job.Name, job.LeftRoot, job.RightRoot, job.Mode, job.Policy, o.ToJson());
+        if (!TryUpsertJob(job with { SettingsJson = o.ToJson() }, out _)) return;
         ReloadJobs(selectId: job.Id);
         Log(o.AutoOnFileChange
             ? $"Da BAT dong bo lien tuc cho Job '{job.Name}': co thay doi la tu dong bo sau {o.AutoFileChangeDelaySec} giay."

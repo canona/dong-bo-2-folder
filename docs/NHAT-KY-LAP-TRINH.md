@@ -274,6 +274,16 @@ Commit: xem PR của nhánh `claude/issue-4-20261016-1717`.
 - Thiết kế test (`tests/FolderSync.Core.Harness/JobRunnerHardTests.cs`): G5 dùng đúng thứ tự `MainWindow.ReloadJobs` (Dispose cũ → tạo mới → `InheritHistory` → `StartAuto`), kiểm bằng `sync_runs`, số sự kiện `Started` và reflection vào `_watchers/_debounce/_periodic/_rewatch/_disposed` của 100 runner cũ. D1 chặn phiên thắng khóa ở điểm `Planned` bằng `BlockingSink` rồi mới thả → không dựa vào sleep, số executor = số lần chạm `Planned`.
 - Kiểm chứng: harness 167 PASS + 1 FAIL (ca watcher Linux đã biết, ngoài phạm vi), 3 lần chạy giống hệt.
 
+## Bộ test khó giai đoạn 3 — HARD-E4 / F1 / H1 / D2 (17/10/2026, Claude, issue #8)
+
+Commit: xem PR của nhánh `claude/issue-8-20261017-1533`. Test: `tests/FolderSync.Core.Harness/TimeCorruptionHardTests.cs`.
+
+- **Lỗi sửa (FAIL → PASS)**: `FullContentCompare` ("hash toàn bộ mỗi lần") vô nghĩa qua `JobRunner`: scanner dùng cache hash khóa theo size+mtime nên file sửa/lật bit giữ nguyên size+mtime nhận lại hash CŨ → bỏ sót, state ghi sai. Sửa nhỏ: `SyncSession.ScanSide(trustCache)` — pha Analyze không tin cache khi `hashAllFiles`. Trước sửa FAIL 6 ca (E4b, F1 đích x2, F1 nguồn x2 + dòng INFO), sau sửa PASS hết.
+- **Chưa sửa, chờ chủ repo quyết (2 FAIL còn lại, là repro P0)**: (1) H1b: xóa `file_state` giữ `jobs` + Mirror → mốc chốt xóa chuyển sang Trái+Phải nên lệnh xóa 12/20 file không bị chặn (có state thì bị chặn). (2) H1c: `settings_json` cắt cụt → `FromJson` âm thầm trả mặc định Job mới (mất Exclude, ngưỡng xóa 10% → 50%) → Mirror xóa file ngoài phạm vi ở Phải. Cả hai bản cũ vào history (khôi phục được).
+- Ghi nhận không sửa: D2 (2 Job chung đích) hội tụ sau 1–2 vòng ở cả 3 chế độ, không dao động, nhưng Mirror: Job sau xóa file Job trước; H1a: DB cắt nửa → `SqliteException` khi mở, `MainWindow` không bọc `new SqliteStateStore` (chưa kiểm chứng trên Windows).
+- Kiểm chứng: 182 PASS + 3 FAIL (1 ca watcher Linux đã biết + 2 repro H1), 3 lần chạy giống hệt.
+- **D2 — chặn hẳn (quyết định chủ repo 18/10/2026, qua giám khảo Muse)**: không cho tạo/sửa Job có folder Trái hoặc Phải trùng Trái/Phải của Job khác. Chặn đặt trong `SqliteStateStore.UpsertJob` (cửa ghi duy nhất, mọi đường tạo/sửa của app đi qua), so sánh theo đường dẫn tuyệt đối chuẩn hóa (không phân biệt hoa/thường, bỏ dấu phân cách cuối); ném `SharedFolderException` trước khi ghi gì. `MainWindow.TryUpsertJob` bắt và hiện hộp thoại cho 5 chỗ gọi (thêm/sửa Job, đổi folder, đổi chế độ, bật/tắt liên tục). Lưu ý: Job trùng folder đã tồn tại từ trước vẫn chạy nhưng không lưu lại được (đổi chế độ, bật liên tục…) cho tới khi sửa folder. Test: 13 ca `D2 chan` (trước khi cài chặn FAIL 8/13, sau cài PASS hết); characterization D2 cũ đổi thành "Job B bị chặn lúc tạo, Job A vẫn chạy".
+
 ## Bộ test khó giai đoạn 2 — HARD-A1 + A2 + J1 (18/10/2026, Claude, issue #7, PR #10)
 
 - Yêu cầu: fuzz có seed 20261015 với mô hình tham chiếu độc lập (5 cấu hình: Backup, Mirror, 2 chiều × NewerWins/LeftWins/RightWins), đổi tên mơ hồ, ma trận xung đột 2 chiều × 5 chính sách.

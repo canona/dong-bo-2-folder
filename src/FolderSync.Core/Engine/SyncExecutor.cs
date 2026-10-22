@@ -142,6 +142,7 @@ public sealed class SyncExecutor
             }
         }
 
+        actions = DeletesFirstWhenPathKindClashes(actions);
         FaultHook?.Invoke(FaultPoints.BeforeFirstAction, null);
         for (int i = 0; i < actions.Count; i++)
         {
@@ -174,10 +175,12 @@ public sealed class SyncExecutor
                         break;
                     case SyncActionKind.DeleteLeft:
                         destination = DeleteWithHistory(Full(_leftRoot, action.RelativePath), _leftRoot, action.RelativePath);
+                        PruneEmptyParents(_leftRoot, action.RelativePath);
                         result.Deleted++;
                         break;
                     case SyncActionKind.DeleteRight:
                         destination = DeleteWithHistory(Full(_rightRoot, action.RelativePath), _rightRoot, action.RelativePath);
+                        PruneEmptyParents(_rightRoot, action.RelativePath);
                         result.Deleted++;
                         break;
                     case SyncActionKind.MoveLeft:
@@ -218,6 +221,75 @@ public sealed class SyncExecutor
         PruneEmptyDirs(_leftRoot);
         PruneEmptyDirs(_rightRoot);
         return result;
+    }
+
+    /// <summary>
+    /// Doi file &lt;-&gt; thu muc cung ten: lenh chep dich 'a' (file) phai chay SAU khi cac lenh xoa 'a/...' da don
+    /// thu muc 'a', va lenh chep 'a/x' phai chay SAU khi file 'a' da bi xoa. Thu tu mac dinh theo duong dan
+    /// ('a' truoc 'a/x') dung cho truong hop sau nhung SAI cho truong hop dau (chep 'a' len thu muc con day file ->
+    /// loi I/O, dong bo hoi tu cham 2 lan chay). Chi keo cac lenh xoa DUNG VOI MOT LENH CHEP/DOI TEN CUNG PHIA len dau
+    /// (giu nguyen thu tu tuong doi); khong cham vao thu tu cua moi lenh khac.
+    /// </summary>
+    internal static IReadOnlyList<SyncAction> DeletesFirstWhenPathKindClashes(IReadOnlyList<SyncAction> actions)
+    {
+        var cmp = StringComparer.OrdinalIgnoreCase;
+        var createPaths = (Left: new HashSet<string>(cmp), Right: new HashSet<string>(cmp));
+        var createParents = (Left: new HashSet<string>(cmp), Right: new HashSet<string>(cmp));
+        foreach (var a in actions)
+        {
+            bool? left = a.Kind switch
+            {
+                SyncActionKind.CopyRightToLeft or SyncActionKind.MoveLeft => true,
+                SyncActionKind.CopyLeftToRight or SyncActionKind.MoveRight => false,
+                _ => null
+            };
+            if (left is null) continue;
+            var path = a.TargetPath ?? a.RelativePath;
+            var paths = left.Value ? createPaths.Left : createPaths.Right;
+            var parents = left.Value ? createParents.Left : createParents.Right;
+            paths.Add(path);
+            for (int i = path.LastIndexOf('/'); i > 0; i = path.LastIndexOf('/', i - 1)) parents.Add(path[..i]);
+        }
+
+        bool Clashes(SyncAction a)
+        {
+            // Move cung "xoa" duong dan nguon (vd d09/x -> z trong khi chep file d09): phai chay truoc lenh chep
+            if (a.Kind is not (SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight
+                or SyncActionKind.MoveLeft or SyncActionKind.MoveRight)) return false;
+            bool left = a.Kind is SyncActionKind.DeleteLeft or SyncActionKind.MoveLeft;
+            var paths = left ? createPaths.Left : createPaths.Right;
+            var parents = left ? createParents.Left : createParents.Right;
+            if (parents.Contains(a.RelativePath)) return true; // xoa file 'a', roi tao 'a/x'
+            for (int i = a.RelativePath.LastIndexOf('/'); i > 0; i = a.RelativePath.LastIndexOf('/', i - 1))
+                if (paths.Contains(a.RelativePath[..i])) return true; // xoa 'a/x', roi tao file 'a'
+            return false;
+        }
+
+        if (!actions.Any(Clashes)) return actions;
+        return actions.Where(Clashes).Concat(actions.Where(a => !Clashes(a))).ToList();
+    }
+
+    /// <summary>
+    /// Sau khi xoa file: don cac thu muc cha vua rong (toi goc, khong dong vao goc / history) de dong thoi
+    /// cho trong duong dan cho lenh chep file trung ten thu muc ('a/x' xoa het -> chep file 'a').
+    /// Chi xoa thu muc RONG HOAN TOAN - khong bao gio xoa du lieu.
+    /// </summary>
+    private static void PruneEmptyParents(string root, string rel)
+    {
+        try
+        {
+            var rootFull = Path.GetFullPath(root);
+            var dir = Path.GetDirectoryName(Path.Combine(rootFull, rel.Replace('/', Path.DirectorySeparatorChar)));
+            while (dir is not null && dir.Length > rootFull.Length
+                   && !Path.GetFileName(dir).Equals(".foldersync_history", StringComparison.OrdinalIgnoreCase)
+                   && Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
+            {
+                Directory.Delete(dir);
+                dir = Path.GetDirectoryName(dir);
+            }
+        }
+        catch (IOException) { /* don dep la viec phu - de PruneEmptyDirs cuoi lan chay lo */ }
+        catch (UnauthorizedAccessException) { }
     }
 
     /// <summary>Ghi lai hash vua tinh cua ca file nguon va file dich (size/mtime doc lai SAU khi ghi).</summary>
@@ -452,6 +524,7 @@ public sealed class SyncExecutor
         bool caseOnly = string.Equals(from, to, StringComparison.OrdinalIgnoreCase);
         if (!caseOnly && File.Exists(to)) PreserveExisting(to, root, action.TargetPath!);
         File.Move(from, to, overwrite: true);
+        PruneEmptyParents(root, action.RelativePath);
         return to;
     }
 

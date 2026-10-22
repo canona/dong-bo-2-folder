@@ -157,6 +157,18 @@ public sealed class SyncSession
             .ToDictionary(e => e.RelativePath, StringComparer.OrdinalIgnoreCase);
     }
 
+    private static IEnumerable<(bool Left, FileEntry Entry)> MovedHashes(IReadOnlyList<SyncAction> actions, AnalysisContext ctx)
+    {
+        foreach (var a in actions)
+        {
+            if (a.TargetPath is null || a.Kind is not (SyncActionKind.MoveLeft or SyncActionKind.MoveRight)) continue;
+            bool left = a.Kind == SyncActionKind.MoveLeft;
+            var side = left ? ctx.Left.Entries : ctx.Right.Entries;
+            if (side.TryGetValue(a.RelativePath, out var src) && src.Hash is not null)
+                yield return (left, src with { RelativePath = a.TargetPath });
+        }
+    }
+
     private void MergeKnownHashes(IEnumerable<(bool Left, FileEntry Entry)> known)
     {
         var left = new Dictionary<string, FileEntry>(_cache.Left ?? new Dictionary<string, FileEntry>(), StringComparer.OrdinalIgnoreCase);
@@ -353,7 +365,9 @@ public sealed class SyncSession
         if (!result.Aborted && !result.Canceled)
         {
             // Hash tinh trong luc chep -> cache: quet lai + state co hash ma khong doc lai noi dung
-            MergeKnownHashes(result.KnownHashes);
+            // File.Move giu nguyen noi dung + mtime nhung executor khong tinh hash -> neu khong ghi lai, file moi o duong
+            // dan dich chi co hash o 1 phia, mtime 2 phia lech -> bi coi la "chua dong bo" va roi khoi state.
+            MergeKnownHashes(result.KnownHashes.Concat(MovedHashes(preview.Actions, ctx)));
             var leftAfter = ScanSide(left: true, progress: null, CancellationToken.None);
             var rightAfter = ScanSide(left: false, progress: null, CancellationToken.None);
             var newState = ComputeSyncedState(leftAfter.Entries, rightAfter.Entries, _timeTolerance);

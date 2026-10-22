@@ -62,6 +62,9 @@ public static class RenameDetector
             var free = candidates.Where(j => !removed.Contains(j)).ToList();
             if (free.Count != 1) continue; // 0 = da ghep het; >1 = mo ho, khong ghep
             var copy = actions[free[0]];
+            // Doi ten xuyen kieu (file 'a/x' -> file 'a', hoac file 'a' -> 'a/x'): Move khong tao duoc duong dan dich
+            // vi thu muc/file cung ten van con -> giu cap Delete+Copy, SyncExecutor xoa truoc roi chep.
+            if (IsAncestor(copy.RelativePath, del.RelativePath) || IsAncestor(del.RelativePath, copy.RelativePath)) continue;
             removed.Add(i);
             removed.Add(free[0]);
             moves.Add(new SyncAction(moveKind, del.RelativePath,
@@ -75,4 +78,8 @@ public static class RenameDetector
         result.AddRange(moves);
         return result;
     }
+
+    private static bool IsAncestor(string path, string other) =>
+        other.Length > path.Length && other[path.Length] == '/'
+        && other.StartsWith(path, StringComparison.OrdinalIgnoreCase);
 }

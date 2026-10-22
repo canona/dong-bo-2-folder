@@ -68,6 +68,10 @@ docs/
   - **Tắt so hash:** 2 file giống hệt (cùng size + mtime trong dung sai) không còn thành xung đột giả; `ComputeSyncedState` so cả mtime khi thiếu hash. Giới hạn còn lại (không sửa được nếu không hash): file bị sửa mà giữ nguyên size và mtime — UI đã cảnh báo ở tab Nâng cao.
   - **Job cũ giữ hành vi cũ:** migration ghi `JobOptions.Legacy()` (không tự dọn history, không copy creation time/thuộc tính) cho Job có sẵn; `FromJson("{}")` cũng trả Legacy.
   - Kiểm chứng: harness **96/96 PASS** (thêm 10 ca trong `OptionsTests.cs`, chạy qua Scanner/Session thật).
+<<<<<<< HEAD
+- Giai đoạn 2 bộ test khó — HARD-A1 (fuzz seed 20261015) + A2 + J1 (18/10/2026): harness **218 PASS + 1 FAIL** trên Linux (FAIL duy nhất = ca watcher Linux đã biết; Windows kỳ vọng 219/219). Sửa 4 lỗi engine — xem `docs/NHAT-KY-LAP-TRINH.md`.
+=======
 - Bộ test khó giai đoạn 1 (16–17/10/2026) — **chưa khép**: 1a nằm ở PR #3 (chưa merge); 1b đã merge qua PR #5; 1c (HARD-L1: file đang quản lý bị Exclude thì Mirror không xóa ở đích) là PR của issue #6, chưa merge. Quy ước và 10 nguyên lý: [docs/NGUYEN-LY-TEST-KHO.md](docs/NGUYEN-LY-TEST-KHO.md).
   - Kiểm chứng trên nhánh 1c (Linux): harness **180 test = 179 PASS + 1 FAIL** (ca watcher Linux đã biết "RUN Lien tuc Backup: tao file moi o nguon -> tu xuat hien o dich"); main trước đó 168 → tăng 12 ca L1. Windows: chưa kiểm chứng ở đây, xem CI trên PR.
+>>>>>>> origin/main
 - Việc còn lại để dùng thật hằng ngày (P3): chạy thử trên máy Windows thật với 2 folder thật + 1 USB thật trong 1-2 tuần; tối ưu hash BLAKE3 và quét USN Journal cho folder lớn; chạy nền kiểu Windows Service cho phần Tự động (hiện chạy khi app đang mở).

@@ -70,6 +70,8 @@ var perf = PerfTests.Run();
 pass += perf.pass; fail += perf.fail;
 var bw = BandwidthTests.Run();
 pass += bw.pass; fail += bw.fail;
+var hard1a = HardFaultTests.Run();
+pass += hard1a.pass; fail += hard1a.fail;
 var hard = JobRunnerHardTests.Run();
 pass += hard.pass; fail += hard.fail;
 var hardExclude = ExcludeHardTests.Run();

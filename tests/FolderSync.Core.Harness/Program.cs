@@ -70,8 +70,12 @@ var perf = PerfTests.Run();
 pass += perf.pass; fail += perf.fail;
 var bw = BandwidthTests.Run();
 pass += bw.pass; fail += bw.fail;
-var hard = HardFaultTests.Run();
+var hard1a = HardFaultTests.Run();
+pass += hard1a.pass; fail += hard1a.fail;
+var hard = JobRunnerHardTests.Run();
 pass += hard.pass; fail += hard.fail;
+var hardExclude = ExcludeHardTests.Run();
+pass += hardExclude.pass; fail += hardExclude.fail;
 
 // Don thu muc tam cua moi test (tien to "foldersync-") - khong don thi moi lan chay de lai hang tram MB
 // trong %TEMP% va tung lam DAY O C: (SQLite bao "database or disk is full").

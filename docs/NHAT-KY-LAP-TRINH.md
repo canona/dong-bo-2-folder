@@ -265,6 +265,26 @@ Commit: xem lịch sử nhánh `claude/issue-2-20261016-0853`.
 - Sửa: mở nguồn với `FileShare.ReadWrite | FileShare.Delete`. Xóa giữa lúc chép → bước kiểm chứng thấy nguồn mất → xóa file tạm, báo lỗi I/O → `FailedPaths` giữ state → lần sau xóa lan truyền. Không sửa test.
 - Kiểm chứng: Linux 197 PASS + 1 FAIL (watcher có sẵn) x3. Windows: chờ CI + chủ repo chạy lại.
 
+## Bộ test khó giai đoạn 1b — HARD-G5 + HARD-D1 (16/10/2026, Claude, issue #4)
+
+Commit: xem PR của nhánh `claude/issue-4-20261016-1717`.
+
+- Yêu cầu: G5 (sửa Job 100 lần không nhân đôi watcher/timer) và D1 (4 nguồn kích hoạt cùng lúc trên 1 Job).
+- Lỗi phát hiện: **không có** — cả 11 ca mới PASS ngay trên code cũ nên không sửa engine (đúng quy tắc test trước, sửa sau).
+- Thiết kế test (`tests/FolderSync.Core.Harness/JobRunnerHardTests.cs`): G5 dùng đúng thứ tự `MainWindow.ReloadJobs` (Dispose cũ → tạo mới → `InheritHistory` → `StartAuto`), kiểm bằng `sync_runs`, số sự kiện `Started` và reflection vào `_watchers/_debounce/_periodic/_rewatch/_disposed` của 100 runner cũ. D1 chặn phiên thắng khóa ở điểm `Planned` bằng `BlockingSink` rồi mới thả → không dựa vào sleep, số executor = số lần chạm `Planned`.
+- Kiểm chứng: harness 167 PASS + 1 FAIL (ca watcher Linux đã biết, ngoài phạm vi), 3 lần chạy giống hệt.
+
+## Bộ test khó giai đoạn 1c — HARD-L1 + tổng kết giai đoạn 1 (17/10/2026, Claude, issue #6)
+
+Commit: xem PR của nhánh `claude/issue-6-20261017-0933`.
+
+- Yêu cầu: L1 — file đã được quản lý (có trong state) rồi bị thêm mẫu Exclude thì Mirror **không** được xóa nó ở đích; Exclude = "không quản lý nữa", không phải "đã xóa ở nguồn".
+- Lỗi phát hiện: **không có** — cả 12 ca mới PASS ngay trên code hiện tại nên không sửa engine (đúng quy tắc test trước, sửa sau). Lý do kỹ thuật quan sát được: bộ lọc áp cho cả quét Trái lẫn Phải, file bị Exclude biến mất khỏi cả 2 phía nên không sinh lệnh Delete.
+- Thiết kế test (`tests/FolderSync.Core.Harness/ExcludeHardTests.cs`, đi qua `SyncSession.AnalyzeOnly/Run` + `FolderScanner` + SQLite state thật, thư mục tạm `foldersync-hard-*` tự dọn): (a) Mirror lần 1 → file ở đích + trong state; (b) thêm Exclude → Analyze không đề xuất Delete, Run không xóa, history không có file; (c) Exclude còn hiệu lực, sửa nguồn → đích giữ bản cũ; (d) bỏ Exclude → đích cập nhật theo nguồn, sửa tiếp vẫn đồng bộ, quét lại độc lập Trái = Phải. Có 8 file đệm để chốt xóa 50% không che mất lệnh Delete.
+- Phạm vi chưa kiểm: **chưa** thử Backup/2 chiều với Exclude, thư mục bị Exclude cả cây, hay JobRunner/watcher; chỉ Mirror qua `SyncSession`. Chưa chạy trên Windows.
+- Kiểm chứng: harness 180 test = 179 PASS + 1 FAIL (ca watcher Linux đã biết), 3 lần chạy giống hệt; baseline đầu phiên 167 PASS + 1 FAIL (168 test) → tăng 12.
+- **Tổng kết giai đoạn 1 (trạng thái từng phần, KHÔNG khẳng định hoàn tất):** 1a — PR #3, **chưa merge**; 1b — đã merge qua PR #5 (commit `d404155`); 1c — PR của issue #6, chờ chủ repo merge. Giai đoạn 1 chỉ khép khi cả 3 phần đã vào `main`.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

@@ -41,7 +41,7 @@ dotnet run --project src\FolderSync.App\FolderSync.App.csproj
 dotnet run --project tests\FolderSync.Core.Harness
 ```
 
-Kết quả mong đợi ở dòng cuối: `TONG: 156 PASS, 0 FAIL`.
+Kết quả mong đợi ở dòng cuối: `TONG: 180 PASS, 0 FAIL` (trên Linux có 1 FAIL watcher đã biết: 179 PASS, 1 FAIL).
 
 ---
 

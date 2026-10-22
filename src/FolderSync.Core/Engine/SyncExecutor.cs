@@ -40,6 +40,16 @@ public sealed class SyncResult
     /// sau khi ghi -> dua vao cache hash: lan quet sau va state khong phai doc lai noi dung.
     /// </summary>
     public List<(bool Left, FileEntry Entry)> KnownHashes { get; } = new();
+
+    /// <summary>
+    /// Ban chep da kiem chung (noi dung/size/mtime cua nguon LUC CHEP) theo duong dan dich, chi cho chep cung ten.
+    /// Neu nguon bi sua ngay sau do thi day moi la moc "2 phia da giong" that - de lan sau nhan ra chi nguon doi
+    /// (khong bao xung dot gia).
+    /// </summary>
+    public List<(bool DstLeft, FileEntry Entry)> VerifiedCopies { get; } = new();
+
+    /// <summary>Duong dan (tuong doi) cua hanh dong bi loi I/O: state cu cua chung phai duoc giu, xem SyncSession.</summary>
+    public List<string> FailedPaths { get; } = new();
 }
 
 public enum SyncProgressStage { Scanning, Hashing, Planned, Started, Bytes, Verifying, Completed, Failed }
@@ -88,6 +98,9 @@ public sealed class SyncExecutor
     // Kem mili giay de moi lan chay la 1 thu muc history rieng, khong bao gio trung lan chay truoc
     private readonly string _historyStamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
 
+    /// <summary>Diem chot chich loi (xem FaultPoints) - mac dinh null, chi harness gan.</summary>
+    internal Action<string, string?>? FaultHook { get; set; }
+
     public SyncExecutor(string leftRoot, string rightRoot, SyncOptions? options = null)
     {
         _leftRoot = leftRoot;
@@ -129,6 +142,8 @@ public sealed class SyncExecutor
             }
         }
 
+        actions = DeletesFirstWhenPathKindClashes(actions);
+        FaultHook?.Invoke(FaultPoints.BeforeFirstAction, null);
         for (int i = 0; i < actions.Count; i++)
         {
             if (ct.IsCancellationRequested) { result.Canceled = true; break; }
@@ -160,10 +175,12 @@ public sealed class SyncExecutor
                         break;
                     case SyncActionKind.DeleteLeft:
                         destination = DeleteWithHistory(Full(_leftRoot, action.RelativePath), _leftRoot, action.RelativePath);
+                        PruneEmptyParents(_leftRoot, action.RelativePath);
                         result.Deleted++;
                         break;
                     case SyncActionKind.DeleteRight:
                         destination = DeleteWithHistory(Full(_rightRoot, action.RelativePath), _rightRoot, action.RelativePath);
+                        PruneEmptyParents(_rightRoot, action.RelativePath);
                         result.Deleted++;
                         break;
                     case SyncActionKind.MoveLeft:
@@ -195,6 +212,8 @@ public sealed class SyncExecutor
             {
                 var message = FriendlyError(ex);
                 result.Errors.Add($"{action.Kind} {action.RelativePath}: {message}");
+                result.FailedPaths.Add(action.RelativePath);
+                if (action.TargetPath is { } failedTarget) result.FailedPaths.Add(failedTarget);
                 progress?.Report(new SyncProgress(SyncProgressStage.Failed, i, actions.Count, action, destination, message));
             }
         }
@@ -204,15 +223,88 @@ public sealed class SyncExecutor
         return result;
     }
 
-    /// <summary>Ghi lai hash vua tinh cua ca file nguon va file dich (size/mtime doc lai SAU khi ghi).</summary>
-    private void Remember(SyncResult result, bool srcLeft, string srcRel, bool dstLeft, string dstRel, string hash)
+    /// <summary>
+    /// Doi file &lt;-&gt; thu muc cung ten: lenh chep dich 'a' (file) phai chay SAU khi cac lenh xoa 'a/...' da don
+    /// thu muc 'a', va lenh chep 'a/x' phai chay SAU khi file 'a' da bi xoa. Thu tu mac dinh theo duong dan
+    /// ('a' truoc 'a/x') dung cho truong hop sau nhung SAI cho truong hop dau (chep 'a' len thu muc con day file ->
+    /// loi I/O, dong bo hoi tu cham 2 lan chay). Chi keo cac lenh xoa DUNG VOI MOT LENH CHEP/DOI TEN CUNG PHIA len dau
+    /// (giu nguyen thu tu tuong doi); khong cham vao thu tu cua moi lenh khac.
+    /// </summary>
+    internal static IReadOnlyList<SyncAction> DeletesFirstWhenPathKindClashes(IReadOnlyList<SyncAction> actions)
+    {
+        var cmp = StringComparer.OrdinalIgnoreCase;
+        var createPaths = (Left: new HashSet<string>(cmp), Right: new HashSet<string>(cmp));
+        var createParents = (Left: new HashSet<string>(cmp), Right: new HashSet<string>(cmp));
+        foreach (var a in actions)
+        {
+            bool? left = a.Kind switch
+            {
+                SyncActionKind.CopyRightToLeft or SyncActionKind.MoveLeft => true,
+                SyncActionKind.CopyLeftToRight or SyncActionKind.MoveRight => false,
+                _ => null
+            };
+            if (left is null) continue;
+            var path = a.TargetPath ?? a.RelativePath;
+            var paths = left.Value ? createPaths.Left : createPaths.Right;
+            var parents = left.Value ? createParents.Left : createParents.Right;
+            paths.Add(path);
+            for (int i = path.LastIndexOf('/'); i > 0; i = path.LastIndexOf('/', i - 1)) parents.Add(path[..i]);
+        }
+
+        bool Clashes(SyncAction a)
+        {
+            // Move cung "xoa" duong dan nguon (vd d09/x -> z trong khi chep file d09): phai chay truoc lenh chep
+            if (a.Kind is not (SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight
+                or SyncActionKind.MoveLeft or SyncActionKind.MoveRight)) return false;
+            bool left = a.Kind is SyncActionKind.DeleteLeft or SyncActionKind.MoveLeft;
+            var paths = left ? createPaths.Left : createPaths.Right;
+            var parents = left ? createParents.Left : createParents.Right;
+            if (parents.Contains(a.RelativePath)) return true; // xoa file 'a', roi tao 'a/x'
+            for (int i = a.RelativePath.LastIndexOf('/'); i > 0; i = a.RelativePath.LastIndexOf('/', i - 1))
+                if (paths.Contains(a.RelativePath[..i])) return true; // xoa 'a/x', roi tao file 'a'
+            return false;
+        }
+
+        if (!actions.Any(Clashes)) return actions;
+        return actions.Where(Clashes).Concat(actions.Where(a => !Clashes(a))).ToList();
+    }
+
+    /// <summary>
+    /// Sau khi xoa file: don cac thu muc cha vua rong (toi goc, khong dong vao goc / history) de dong thoi
+    /// cho trong duong dan cho lenh chep file trung ten thu muc ('a/x' xoa het -> chep file 'a').
+    /// Chi xoa thu muc RONG HOAN TOAN - khong bao gio xoa du lieu.
+    /// </summary>
+    private static void PruneEmptyParents(string root, string rel)
     {
         try
         {
-            var src = new FileInfo(Full(srcLeft ? _leftRoot : _rightRoot, srcRel));
+            var rootFull = Path.GetFullPath(root);
+            var dir = Path.GetDirectoryName(Path.Combine(rootFull, rel.Replace('/', Path.DirectorySeparatorChar)));
+            while (dir is not null && dir.Length > rootFull.Length
+                   && !Path.GetFileName(dir).Equals(".foldersync_history", StringComparison.OrdinalIgnoreCase)
+                   && Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
+            {
+                Directory.Delete(dir);
+                dir = Path.GetDirectoryName(dir);
+            }
+        }
+        catch (IOException) { /* don dep la viec phu - de PruneEmptyDirs cuoi lan chay lo */ }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>Ghi lai hash vua tinh cua ca file nguon va file dich (size/mtime doc lai SAU khi ghi).</summary>
+    private void Remember(SyncResult result, bool srcLeft, string srcRel, bool dstLeft, string dstRel, CopiedFile copied)
+    {
+        try
+        {
+            // Nguon: dung size/mtime da kiem chung LUC CHEP, khong doc lai - nguon bi sua (cung size) sau do ma
+            // ghep mtime moi voi hash noi dung cu thi cache noi dung sai va state noi 2 phia "da giong".
+            result.KnownHashes.Add((srcLeft, new FileEntry(srcRel, copied.Size, copied.MtimeUtc, copied.Hash)));
             var dst = new FileInfo(Full(dstLeft ? _leftRoot : _rightRoot, dstRel));
-            result.KnownHashes.Add((srcLeft, new FileEntry(srcRel, src.Length, src.LastWriteTimeUtc, hash)));
-            result.KnownHashes.Add((dstLeft, new FileEntry(dstRel, dst.Length, dst.LastWriteTimeUtc, hash)));
+            if (dst.Length == copied.Size)
+                result.KnownHashes.Add((dstLeft, new FileEntry(dstRel, dst.Length, dst.LastWriteTimeUtc, copied.Hash)));
+            if (string.Equals(srcRel, dstRel, StringComparison.OrdinalIgnoreCase))
+                result.VerifiedCopies.Add((dstLeft, new FileEntry(dstRel, copied.Size, copied.MtimeUtc, copied.Hash)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* chi la cache */ }
     }
@@ -228,11 +320,13 @@ public sealed class SyncExecutor
     private const int CopyBufferSize = 1024 * 1024;
     private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(100);
 
-    /// <returns>SHA-256 cua noi dung da chep.</returns>
     private BandwidthThrottle? _throttle;
     private PauseGate? _pause;
 
-    private string AtomicCopy(string sourceFull, string destFull, string destRoot, string rel,
+    /// <summary>SHA-256 + size + mtime cua nguon tai thoi diem da kiem chung (khop voi noi dung da chep).</summary>
+    private readonly record struct CopiedFile(string Hash, long Size, DateTime MtimeUtc);
+
+    private CopiedFile AtomicCopy(string sourceFull, string destFull, string destRoot, string rel,
         CopyReporter? report = null, CancellationToken ct = default)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destFull)!);
@@ -252,8 +346,11 @@ public sealed class SyncExecutor
         try
         {
             hash = CopyAndVerify(sourceFull, tmpFull, rel, srcInfo, total, mtimeBefore, report, ct);
+            FaultHook?.Invoke(FaultPoints.AfterTempWrite, rel);
             if (File.Exists(destFull)) PreserveExisting(destFull, destRoot, rel);
+            FaultHook?.Invoke(FaultPoints.BeforeRename, rel);
             File.Move(tmpFull, destFull, overwrite: true);
+            FaultHook?.Invoke(FaultPoints.AfterRename, rel);
         }
         catch
         {
@@ -263,7 +360,7 @@ public sealed class SyncExecutor
             throw;
         }
         FinishCopiedFile(destFull, srcInfo);
-        return hash;
+        return new CopiedFile(hash, total, mtimeBefore);
     }
 
     /// <summary>Chua lai it nhat 1 MB tren o dich (FAT32 / he thong can cho cho bang file).</summary>
@@ -316,12 +413,16 @@ public sealed class SyncExecutor
         string srcHash;
         using (var hasher = System.Security.Cryptography.IncrementalHash.CreateHash(
                    System.Security.Cryptography.HashAlgorithmName.SHA256))
-        using (var src = new FileStream(sourceFull, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, CopyBufferSize))
+        // FileShare.Delete: tren Windows, thieu co nay thi nguoi dung KHONG xoa/doi ten duoc file nguon dang chep
+        // (loi sharing violation) - viec xoa that bai am tham roi lan sau file bi chep nguoc / hoi sinh.
+        using (var src = new FileStream(sourceFull, FileMode.Open, FileAccess.Read,
+                   FileShare.ReadWrite | FileShare.Delete, CopyBufferSize))
         using (var dst = new FileStream(tmpFull, FileMode.Create, FileAccess.Write, FileShare.None, CopyBufferSize))
         {
             // Bi gioi han toc do: khoi nho hon (~1/10 giay du lieu) de tien trinh/toc do hien muot
             var buffer = new byte[_throttle?.ChunkSize ?? CopyBufferSize];
             long done = 0;
+            bool midFired = false;
             var lastReport = DateTime.UtcNow;
             report?.Invoke(SyncProgressStage.Bytes, 0, total);
             int read;
@@ -330,6 +431,7 @@ public sealed class SyncExecutor
                 ct.ThrowIfCancellationRequested(); // AtomicCopy bat va xoa file tam
                 hasher.AppendData(buffer, 0, read);
                 dst.Write(buffer, 0, read);
+                if (!midFired) { midFired = true; FaultHook?.Invoke(FaultPoints.MidCopy, rel); }
                 // Chi chen thoi gian cho vao vong ghi FILE TAM - thu tu copy nguyen tu khong doi;
                 // huy trong luc cho -> OperationCanceledException -> AtomicCopy xoa file tam
                 _throttle?.Consume(read, ct);
@@ -395,6 +497,7 @@ public sealed class SyncExecutor
         {
             var hist = HistoryPath(root, rel);
             Directory.CreateDirectory(Path.GetDirectoryName(hist)!);
+            FaultHook?.Invoke(FaultPoints.BeforeHistoryMove, rel);
             File.Move(full, hist, overwrite: true);
             return hist;
         }
@@ -407,6 +510,7 @@ public sealed class SyncExecutor
         if (_options.DeleteMode != DeleteMode.MoveToHistory) return;
         var hist = HistoryPath(destRoot, rel);
         Directory.CreateDirectory(Path.GetDirectoryName(hist)!);
+        FaultHook?.Invoke(FaultPoints.BeforeHistoryMove, rel);
         File.Copy(destFull, hist, overwrite: true);
     }
 
@@ -420,6 +524,7 @@ public sealed class SyncExecutor
         bool caseOnly = string.Equals(from, to, StringComparison.OrdinalIgnoreCase);
         if (!caseOnly && File.Exists(to)) PreserveExisting(to, root, action.TargetPath!);
         File.Move(from, to, overwrite: true);
+        PruneEmptyParents(root, action.RelativePath);
         return to;
     }
 

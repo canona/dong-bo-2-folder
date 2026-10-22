@@ -86,6 +86,9 @@ public sealed class SyncSession
         _createMissingRoots = createMissingRoots;
     }
 
+    /// <summary>Diem chot chich loi (xem FaultPoints) - mac dinh null, chi harness gan.</summary>
+    internal Action<string, string?>? FaultHook { get; set; }
+
     private readonly TimeSpan _timeTolerance;
     private readonly bool _hashAllFiles;
     private readonly ScanCache _cache;
@@ -152,6 +155,18 @@ public sealed class SyncSession
         _store.SaveHashCacheDelta(_jobId, left, upserts, deletes);
         return current.Values.Where(e => e.Hash is not null)
             .ToDictionary(e => e.RelativePath, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<(bool Left, FileEntry Entry)> MovedHashes(IReadOnlyList<SyncAction> actions, AnalysisContext ctx)
+    {
+        foreach (var a in actions)
+        {
+            if (a.TargetPath is null || a.Kind is not (SyncActionKind.MoveLeft or SyncActionKind.MoveRight)) continue;
+            bool left = a.Kind == SyncActionKind.MoveLeft;
+            var side = left ? ctx.Left.Entries : ctx.Right.Entries;
+            if (side.TryGetValue(a.RelativePath, out var src) && src.Hash is not null)
+                yield return (left, src with { RelativePath = a.TargetPath });
+        }
     }
 
     private void MergeKnownHashes(IEnumerable<(bool Left, FileEntry Entry)> known)
@@ -263,6 +278,7 @@ public sealed class SyncSession
         EnsureCacheLoaded();
         var leftScan = ScanSide(left: true, progress, ct, trustCache: !_hashAllFiles);
         var rightScan = ScanSide(left: false, progress, ct, trustCache: !_hashAllFiles);
+        FaultHook?.Invoke(FaultPoints.AfterScan, null);
         var state = _store.LoadState(_jobId);
 
         var left = new Dictionary<string, FileEntry>(leftScan.Entries, StringComparer.OrdinalIgnoreCase);
@@ -344,19 +360,25 @@ public sealed class SyncSession
             progress?.Report(new SyncProgress(SyncProgressStage.Planned, 0, preview.Actions.Count, null,
                 Plan: preview.Actions, BytesTotal: CopyBytes(preview.Actions, ctx.Left.Entries, ctx.Right.Entries),
                 ScanLeft: ctx.Left.Entries, ScanRight: ctx.Right.Entries));
-            var executor = new SyncExecutor(_leftRoot, _rightRoot, _options);
+            var executor = new SyncExecutor(_leftRoot, _rightRoot, _options) { FaultHook = FaultHook };
             result = executor.Execute(preview.Actions, baseline, progress, ct, pause);
         }
 
         if (!result.Aborted && !result.Canceled)
         {
             // Hash tinh trong luc chep -> cache: quet lai + state co hash ma khong doc lai noi dung
-            MergeKnownHashes(result.KnownHashes);
+            // File.Move giu nguyen noi dung + mtime nhung executor khong tinh hash -> neu khong ghi lai, file moi o duong
+            // dan dich chi co hash o 1 phia, mtime 2 phia lech -> bi coi la "chua dong bo" va roi khoi state.
+            MergeKnownHashes(result.KnownHashes.Concat(MovedHashes(preview.Actions, ctx)));
             var leftAfter = ScanSide(left: true, progress: null, CancellationToken.None);
             var rightAfter = ScanSide(left: false, progress: null, CancellationToken.None);
             var newState = ComputeSyncedState(leftAfter.Entries, rightAfter.Entries, _timeTolerance);
+            newState = KeepVerifiedCopies(newState, result.VerifiedCopies, leftAfter.Entries, rightAfter.Entries);
+            // Hanh dong loi (vd nguon bi xoa/doi ten giua luc chep) cung phai giu state cu: bo di thi lan sau
+            // file con lai o phia kia nhin nhu "file moi" va bi chep nguoc ve (hoi sinh file nguoi dung vua xoa).
             var unreadable = ctx.Left.FailedPaths.Concat(ctx.Right.FailedPaths)
-                .Concat(leftAfter.FailedPaths).Concat(rightAfter.FailedPaths).ToList();
+                .Concat(leftAfter.FailedPaths).Concat(rightAfter.FailedPaths).Concat(result.FailedPaths).ToList();
+            FaultHook?.Invoke(FaultPoints.AfterExecuteBeforeSaveState, null);
             _store.SaveState(_jobId, KeepUnreadableState(newState, stateBefore, unreadable));
             UpdateCache(leftAfter.RootMissing ? null : leftAfter.Entries, rightAfter.RootMissing ? null : rightAfter.Entries);
             PersistCache();
@@ -405,6 +427,32 @@ public sealed class SyncSession
                     $"Bo qua: khong doc duoc luc quet (du dinh: {a.Kind})", a.TargetPath)
                 : a)
             .ToList();
+    }
+
+    /// <summary>
+    /// File vua chep xong ma nguon bi sua NGAY SAU DO (khong con giong dich nen ComputeSyncedState bo qua): ghi
+    /// ban da kiem chung luc chep lam moc state, de lan sau thay dung "chi nguon doi, dich nguyen" thay vi
+    /// "2 phia deu khac, khong co state" = xung dot gia. Chi ap dung khi DICH van dung la ban vua chep.
+    /// </summary>
+    internal IReadOnlyDictionary<string, FileEntry> KeepVerifiedCopies(
+        IReadOnlyDictionary<string, FileEntry> synced,
+        IReadOnlyList<(bool DstLeft, FileEntry Entry)> copies,
+        IReadOnlyDictionary<string, FileEntry> left,
+        IReadOnlyDictionary<string, FileEntry> right)
+    {
+        if (copies.Count == 0) return synced;
+        var result = new Dictionary<string, FileEntry>(synced, StringComparer.OrdinalIgnoreCase);
+        foreach (var (dstLeft, copied) in copies)
+        {
+            if (result.ContainsKey(copied.RelativePath)) continue;
+            var dst = dstLeft ? left : right;
+            if (!dst.TryGetValue(copied.RelativePath, out var d) || d.Size != copied.Size) continue;
+            bool same = d.Hash is not null && copied.Hash is not null
+                ? string.Equals(d.Hash, copied.Hash, StringComparison.OrdinalIgnoreCase)
+                : (d.MtimeUtc - copied.MtimeUtc).Duration() <= _timeTolerance;
+            if (same) result[copied.RelativePath] = copied;
+        }
+        return result;
     }
 
     /// <summary>

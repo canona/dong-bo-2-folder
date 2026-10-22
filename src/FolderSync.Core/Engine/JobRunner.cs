@@ -235,6 +235,9 @@ public sealed class JobRunner : IDisposable
         SessionOutcome? outcome = null;
         Exception? error = null;
         bool rerun;
+        // Tao TRUOC khi bao Running: UI hien nut Huy ngay khi thay Running - neu cts tao sau thi bam Huy
+        // dung luc do (_cts con null) bi MAT, lan chay chep tiep toi het (CI cham tung lo ra)
+        var cts = BeginCancelable();
         try
         {
             lock (_lock)
@@ -251,19 +254,14 @@ public sealed class JobRunner : IDisposable
             Started?.Invoke(this, trigger);
 
             var sink = new OwnPathRecorder(this, progress);
-            var cts = BeginCancelable();
-            try
+            outcome = await Task.Run(() =>
             {
-                outcome = await Task.Run(() =>
-                {
-                    RunScript(Options.ScriptPreAnalyze, "", null);
-                    var oc = CreateSession().Run(sink, cts.Token, _pause);
-                    RunScript(Options.ScriptPostSync, oc.Result!.Aborted ? "aborted" : "", oc.Result);
-                    CleanupHistory();
-                    return oc;
-                });
-            }
-            finally { EndCancelable(cts); }
+                RunScript(Options.ScriptPreAnalyze, "", null);
+                var oc = CreateSession().Run(sink, cts.Token, _pause);
+                RunScript(Options.ScriptPostSync, oc.Result!.Aborted ? "aborted" : "", oc.Result);
+                CleanupHistory();
+                return oc;
+            });
         }
         catch (Exception ex)
         {
@@ -271,6 +269,7 @@ public sealed class JobRunner : IDisposable
         }
         finally
         {
+            EndCancelable(cts);
             lock (_lock)
             {
                 _running = false;

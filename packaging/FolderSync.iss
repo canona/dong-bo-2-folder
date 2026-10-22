@@ -7,7 +7,7 @@
 
 #define MyAppName "FolderSync"
 ; Phien ban + ban quyen: giu KHOP voi Directory.Build.props (Version, Company, Copyright)
-#define MyAppVersion "0.3.0"
+#define MyAppVersion "0.3.1"
 #define MyAppPublisher "VTC Digital"
 #define MyAppCopyright "Copyright (C) 2026 VTC Digital. All rights reserved."
 #define MyAppExeName "FolderSync.App.exe"

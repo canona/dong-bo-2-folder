@@ -307,6 +307,16 @@ Commit: xem PR của nhánh `claude/issue-6-20261017-0933`.
 - Kiểm chứng: harness 180 test = 179 PASS + 1 FAIL (ca watcher Linux đã biết), 3 lần chạy giống hệt; baseline đầu phiên 167 PASS + 1 FAIL (168 test) → tăng 12.
 - **Tổng kết giai đoạn 1 (trạng thái từng phần, KHÔNG khẳng định hoàn tất):** 1a — PR #3, **chưa merge**; 1b — đã merge qua PR #5 (commit `d404155`); 1c — PR của issue #6, chờ chủ repo merge. Giai đoạn 1 chỉ khép khi cả 3 phần đã vào `main`.
 
+## Đợt 20 — Kiểm chứng `main` sau khi gộp 3 PR trên Windows, sửa race Hủy, phát hành 0.3.1 (22/10/2026, Claude Code)
+
+Trạng thái: đã commit lên `main`, Release `v0.3.1-internal`.
+
+- **Bối cảnh**: issue #12 — Claude (GitHub App) gộp PR #3 (`2f529c1`), #10 (`a7d612a`), #9 (`5790730`) vào `main` nhưng không đóng gói được (runner không có `zip`/`7z`, exe 154 MB vượt giới hạn 100 MB/file của git). Issue yêu cầu bản `0.1.0` — thấp hơn bản 0.3.0 đã cài → đã góp ý trên issue dùng **0.3.1**.
+- **Harness trên Windows** (`main` 5790730, fuzz mặc định 2.000 bước, 26 phút): **304 PASS + 2 FAIL** = H1b, H1c (repro P0, giữ FAIL có chủ ý). Ca watcher FAIL trên Linux thì PASS trên Windows.
+- **Race nút Hủy** (ca CI Windows thỉnh thoảng FAIL "Huy tu runner moi dung duoc lan chay cua runner cu", test viết ở đợt 14): `RunAsync` báo `Running` (UI hiện nút Hủy) TRƯỚC `BeginCancelable()` → bấm Hủy đúng lúc đó gặp `_cts` null, bị mất, lần chạy chép tới hết. Sửa: tạo `CancellationTokenSource` trước khi báo Running, `EndCancelable` ở `finally` ngoài cùng. Test sửa: Hủy rơi vào pha quét thì `RunAsync` trả null (`OperationCanceledException`) — chấp nhận cả 2 dạng "đã hủy" (kiểm `LastSummary`) + file đích không được tạo. Race phụ thuộc thời điểm nên không ép FAIL được trên máy này; sau sửa: PASS (harness fuzz 200 bước: 304 PASS + 2 FAIL H1b/H1c).
+- **Phiên bản 0.3.1**: `Directory.Build.props` + `MyAppVersion` trong `FolderSync.iss`. `build-release.ps1` → `FolderSync-Setup-0.3.1.exe` (64,6 MB) + `FolderSync-portable.zip` (64,1 MB), exe ProductVersion 0.3.1, Company VTC Digital.
+- **Hạn chế đã biết** (ghi trong Release): (a) **lỗi P0 H1 chưa sửa** — mất/hỏng `file_state` hoặc `settings_json` thì Mirror có thể xóa file ở đích: không dùng Mirror trên dữ liệu không có sao lưu; (b) fuzz 10.000 bước chưa chạy; (c) chạy ngâm 7 ngày chưa chạy.
+
 ---
 
 ## Mẫu cho đợt tiếp theo

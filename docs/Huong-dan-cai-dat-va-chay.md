@@ -41,7 +41,7 @@ dotnet run --project src\FolderSync.App\FolderSync.App.csproj
 dotnet run --project tests\FolderSync.Core.Harness
 ```
 
-Kết quả mong đợi ở dòng cuối: `TONG: 180 PASS, 0 FAIL` (trên Linux có 1 FAIL watcher đã biết: 179 PASS, 1 FAIL).
+Kết quả mong đợi ở dòng cuối (Windows, 22/10/2026): `TONG: 304 PASS, 2 FAIL` — 2 FAIL là H1b/H1c, tái hiện lỗi P0 H1 **chưa sửa**, được giữ FAIL có chủ ý (trên Linux thêm 1 FAIL watcher đã biết). Bộ fuzz mặc định chạy khoảng 26 phút; muốn nhanh thì đặt `set HARD_MONKEY_STEPS=200` trước khi chạy (khoảng 5 phút).
 
 ---
 

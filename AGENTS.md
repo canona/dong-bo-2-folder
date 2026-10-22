@@ -48,7 +48,7 @@ File này dành cho **mọi AI agent** (Claude, Codex, Cursor, Copilot, Gemini�
 ## 2. Bắt đầu nhanh
 
 ```powershell
-# Test engine - dong cuoi phai la: TONG: 180 PASS, 0 FAIL; Linux: 179 PASS + 1 FAIL watcher da biet (tu don thu muc tam khi chay xong)
+# Test engine - Windows hien tai: TONG: 304 PASS, 2 FAIL (H1b, H1c = loi P0 chua sua, FAIL co chu y); Linux them 1 FAIL watcher da biet (tu don thu muc tam khi chay xong)
 dotnet run --project tests\FolderSync.Core.Harness
 
 # Build + chay app
@@ -156,7 +156,7 @@ Mỗi điều từng là **lỗi mất dữ liệu thật** và đều có test 
 
 ## 6. Trạng thái hiện tại (15/10/2026)
 
-- `main` trên GitHub: tới commit `678c072` (đợt 4–12: Job liên tục độc lập, phân tích folder lớn nhanh, Full/Mini/khay, chạy cùng Windows, bộ cài 0.3.0, giới hạn tốc độ chép). Harness **145/145 PASS**, App build 0 lỗi.
+- `main` trên GitHub (22/10/2026): đã gộp bộ test khó PR #3 / #5 / #10 / #11 / #9 + sửa race Hủy; phiên bản **0.3.1** (Release `v0.3.1-internal`). Harness Windows **304 PASS + 2 FAIL** (H1b/H1c — lỗi P0 H1 chưa sửa: mất/hỏng `file_state` hoặc `settings_json` thì Mirror có thể xóa file ở đích). App build 0 lỗi.
 - Quy mô: Core ~2.300 dòng, App ~3.000 dòng (riêng `MainWindow.xaml.cs` ~1.200), harness ~1.300 dòng.
 
 ### Hạn chế đã biết

@@ -10,7 +10,7 @@
     <Authors>Canona</Authors>
     <Copyright>Copyright © 2026 VTC Digital. All rights reserved.</Copyright>
     <Description>FolderSync - phan mem dong bo du lieu giua 2 folder. Ban quyen thuoc ve VTC Digital, phat trien thang 10/2026 boi Canona.</Description>
-    <Version>0.3.0</Version>
+    <Version>0.3.1</Version>
   </PropertyGroup>
   <ItemGroup>
     <!-- Doc bang AssemblyMetadataAttribute (Authors khong duoc ghi vao assembly) -->

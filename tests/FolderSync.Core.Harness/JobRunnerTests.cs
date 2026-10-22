@@ -233,11 +233,15 @@ public static class JobRunnerTests
             using (b)
             {
                 var sw = System.Diagnostics.Stopwatch.StartNew();
+                // Bam Huy NGAY khi thay Running (co the con o pha quet). Huy luc quet -> RunAsync tra null
+                // (OperationCanceledException), luc chep -> Result.Canceled; ca 2 deu la "da huy".
                 b.Cancel(); // nut Huy tren UI goi runner HIEN TAI
-                var res = runA.Wait(4000) ? runA.Result : null;
+                bool finished = runA.Wait(4000);
+                bool canceled = finished && (runA.Result?.Result?.Canceled == true || a.LastSummary?.StartsWith("Da huy") == true);
                 Check("Thay runner khi dang chay: Huy tu runner moi dung duoc lan chay cua runner cu",
-                    res?.Result?.Canceled == true, $"{sw.ElapsedMilliseconds} ms, Canceled={res?.Result?.Canceled}");
-                if (res is null) runA.Wait();
+                    canceled && !File.Exists(Full(right, "lon.bin")),
+                    $"{sw.ElapsedMilliseconds} ms, xong={finished}, tom tat='{a.LastSummary}'");
+                if (!finished) runA.Wait();
                 Check("Thay runner + Huy: khong sot file tam",
                     Directory.GetFiles(right, "*.tmp-sync", SearchOption.AllDirectories).Length == 0);
             }

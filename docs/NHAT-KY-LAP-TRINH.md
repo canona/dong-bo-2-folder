@@ -309,6 +309,14 @@ Commit: xem PR của nhánh `claude/issue-6-20261017-0933`.
 
 ---
 
+## Đóng gói bản dùng thật nội bộ 0.1.0 (22/10/2026, Claude, issue #12)
+
+- Quyết định của chủ repo: kết thúc quá trình test khó, gộp 3 PR còn mở vào `main` rồi đóng gói. Đã gộp: PR #3 (`2f529c1`, HARD 1a + sửa FileShare.Delete), PR #10 (`a7d612a`, A1/A2/J1), PR #9 (`5790730`, E4/F1/H1/D2 + D2 chặn Job dùng chung folder).
+- Conflict: mỗi lần merge main vào nhánh đều chỉ xung đột ở `Program.cs` (dòng đăng ký test), `NHAT-KY-LAP-TRINH.md`, và 1 chỗ trong `SyncExecutor.cs` (PR #10: `DeletesFirstWhenPathKindClashes` + `FaultHook`) / `SyncSession.cs` (PR #9: `trustCache` + `FaultHook AfterScan`) — luôn giữ cả hai phía, không xóa/sửa test nào. README của `main` còn sót marker conflict (nhiều tầng) — đã dọn khi merge PR #9.
+- Harness Linux, mỗi PR chạy 3 lần giống hệt: PR #3 221 PASS + 1 FAIL; PR #10 272 PASS + 1 FAIL; PR #9 303 PASS + 3 FAIL. `main` cuối: 303 PASS + 3 FAIL (watcher Linux đã biết, H1b, H1c). CI Windows PR #3: lần 1 221 PASS + 1 FAIL (ca RUN "Hủy từ runner mới", nghi flaky), chạy lại 222 PASS / 0 FAIL.
+- Build Release toàn solution 0 lỗi; `dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true` thành công (exe ~154 MB). **Chưa tạo được ZIP/Release** (môi trường không cho chạy `zip`/`7z`), chưa chạy thử bản publish trên Windows.
+- **Hạn chế đã biết:** H1 chưa sửa (mất/hỏng `file_state` → Mirror có thể xóa file ở đích; chỉ dùng với dữ liệu có sao lưu); fuzz 10.000 bước chưa chạy; bài ngâm 7 ngày chưa chạy; OPEN-1/OPEN-2 (đợt giai đoạn 2) chưa sửa; 2 Job dùng chung folder đã bị chặn khi tạo/sửa (D2).
+
 ## Mẫu cho đợt tiếp theo
 
 ```markdown

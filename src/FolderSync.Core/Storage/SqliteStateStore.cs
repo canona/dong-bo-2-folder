@@ -35,8 +35,19 @@ public sealed class SqliteStateStore : IDisposable
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
         _conn = new SqliteConnection($"Data Source={dbPath}");
-        _conn.Open();
-        EnsureSchema();
+        try
+        {
+            _conn.Open();
+            EnsureSchema();
+        }
+        catch
+        {
+            // File hong (H1a): constructor nem loi thi khong ai Dispose duoc store -> ket noi mo giu khoa file,
+            // app khong doi ten duoc file hong de tao DB moi (crash "file dang duoc dung boi tien trinh khac")
+            _conn.Dispose();
+            SqliteConnection.ClearPool(_conn);
+            throw;
+        }
     }
 
     private void EnsureSchema()
@@ -101,6 +112,50 @@ public sealed class SqliteStateStore : IDisposable
             legacy.CommandText = "UPDATE jobs SET settings_json = $json";
             legacy.Parameters.AddWithValue("$json", JobOptions.Legacy().ToJson());
             legacy.ExecuteNonQuery();
+        }
+
+        // Migration: so file trong state o lan luu gan nhat (loi P0 H1b). file_state rong ma cot nay > 0 = state BI MAT,
+        // khong phai "chua tung dong bo" -> SyncSession chan lenh xoa thay vi lay moc % = Trai + Phai (chot vo hieu).
+        using var checkCount = _conn.CreateCommand();
+        checkCount.CommandText = "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name = 'state_files'";
+        if (Convert.ToInt64(checkCount.ExecuteScalar()) == 0)
+        {
+            using var alter = _conn.CreateCommand();
+            alter.CommandText = """
+                ALTER TABLE jobs ADD COLUMN state_files INTEGER NULL;
+                UPDATE jobs SET state_files = NULLIF((SELECT COUNT(*) FROM file_state f WHERE f.job_id = jobs.id), 0);
+                """;
+            alter.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>So file state o lan dong bo thanh cong gan nhat (null = chua tung luu / nguoi dung da xac nhan chay lai tu dau).</summary>
+    public int? LoadStateFileCount(string jobId)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT state_files FROM jobs WHERE id = $id";
+            cmd.Parameters.AddWithValue("$id", jobId);
+            var v = cmd.ExecuteScalar();
+            return v is null or DBNull ? null : Convert.ToInt32(v);
+        }
+    }
+
+    /// <summary>
+    /// Nguoi dung da xem truoc va XAC NHAN chay lai Job tu dau sau khi state bi mat: bo dau "da tung co state".
+    /// Lan chay sau duoc coi nhu lan dau (moc chot % = tong file 2 phia).
+    /// </summary>
+    public void AcceptLostState(string jobId)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "UPDATE jobs SET state_files = NULL WHERE id = $id";
+            cmd.Parameters.AddWithValue("$id", jobId);
+            cmd.ExecuteNonQuery();
         }
     }
 
@@ -208,7 +263,7 @@ public sealed class SqliteStateStore : IDisposable
                 using var clear = _conn.CreateCommand();
                 clear.Transaction = tx;
                 // Cache hash cung theo duong dan tuong doi cua folder CU -> xoa luon
-                clear.CommandText = "DELETE FROM file_state WHERE job_id = $id; DELETE FROM hash_cache WHERE job_id = $id; DELETE FROM dir_state WHERE job_id = $id;";
+                clear.CommandText = "DELETE FROM file_state WHERE job_id = $id; DELETE FROM hash_cache WHERE job_id = $id; DELETE FROM dir_state WHERE job_id = $id; UPDATE jobs SET state_files = NULL WHERE id = $id;";
                 clear.Parameters.AddWithValue("$id", id);
                 clear.ExecuteNonQuery();
             }
@@ -321,6 +376,14 @@ public sealed class SqliteStateStore : IDisposable
                     pDir.Value = d;
                     insDir.ExecuteNonQuery();
                 }
+            }
+            using (var count = _conn.CreateCommand())
+            {
+                count.Transaction = tx;
+                count.CommandText = "UPDATE jobs SET state_files = $n WHERE id = $job";
+                count.Parameters.AddWithValue("$n", entries.Count);
+                count.Parameters.AddWithValue("$job", jobId);
+                count.ExecuteNonQuery();
             }
             tx.Commit();
         }

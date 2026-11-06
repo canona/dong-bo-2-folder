@@ -77,4 +77,9 @@ docs/
   - **Đồng bộ thư mục rỗng** (`DirectoryPlanner`, bảng `dir_state`, tùy chọn Job "Dong bo ca thu muc rong" — mặc định bật): tạo/xóa thư mục rỗng theo chế độ; chỉ xóa thư mục rỗng hoàn toàn; Job chưa có `dir_state` không bao giờ suy ra "đã xóa"; chốt RootMissing chặn cả lệnh thư mục.
   - **Cây so sánh chỉnh được độ rộng cột**: kéo mép phải tiêu đề cột (kiểu Explorer), nhấp đúp = mặc định, chuột phải tiêu đề = khôi phục tất cả; lưu trong `app-settings.json`.
   - Kiểm chứng (Windows): harness **359 test = 357 PASS + 2 FAIL** (H1b/H1c — lỗi P0 H1 chưa sửa, FAIL có chủ ý); 8 ca repro FAIL trên code cũ. Build App 0 lỗi / 0 cảnh báo.
+- Bản 0.3.3 (06/11/2026) — **sửa lỗi P0 H1** (dữ liệu trạng thái mất/hỏng):
+  - **H1b**: `file_state` mất mà Job đã từng đồng bộ (`jobs.state_files`) → chặn mọi lệnh xóa/đổi tên (kể cả Force) cho tới khi người dùng bấm Đồng bộ tay và xác nhận "chạy lại từ đầu"; trước đây coi là lần chạy đầu nên chốt % bị vô hiệu, Mirror xóa 12/20 file ở đích.
+  - **H1c**: `settings_json` hỏng → Job đánh dấu hỏng, không Phân tích/Đồng bộ cho tới khi Lưu lại Tùy chọn; trước đây âm thầm dùng mặc định (mất Exclude, ngưỡng 10% thành 50%).
+  - **H1a**: `state.db` hỏng → app hỏi giữ file hỏng (`state.db.hong-<thời gian>`) + tạo DB mới, hoặc thoát; sửa `SqliteStateStore` không nhả khóa file khi mở lỗi.
+  - Kiểm chứng (Windows, fuzz 2.000 bước): harness **377 PASS, 0 FAIL**. Build App 0 lỗi / 0 cảnh báo.
 - Việc còn lại để dùng thật hằng ngày (P3): chạy thử trên máy Windows thật với 2 folder thật + 1 USB thật trong 1-2 tuần; tối ưu hash BLAKE3 và quét USN Journal cho folder lớn; chạy nền kiểu Windows Service cho phần Tự động (hiện chạy khi app đang mở).

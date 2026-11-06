@@ -41,6 +41,13 @@ public partial class JobOptionsWindow : Window
         Icon = IconHelper.AppIcon;
         _existingId = existing?.Id ?? "job-" + Guid.NewGuid().ToString("N")[..8];
         var options = JobOptions.FromJson(existing?.SettingsJson);
+        if (options.SettingsCorrupt)
+            // Hien sau khi cua so mo (Owner da gan) - hop thoai trong constructor khong co cua so cha
+            Loaded += (_, _) => MessageBox.Show(this,
+                "Cau hinh cu cua Job nay bi HONG (khong doc duoc) nen Job dang bi tam dung.\n\n" +
+                "Cac o duoi day dang la gia tri MAC DINH, khong phai cau hinh cu cua ban. Hay kiem tra lai ky " +
+                "tab Bo loc (Exclude) va Nguong an toan xoa, roi bam Luu de Job chay lai.",
+                "Cau hinh Job bi hong", MessageBoxButton.OK, MessageBoxImage.Warning);
 
         foreach (var m in Modes) ModeCombo.Items.Add(m.Label);
         foreach (var p in Policies) PolicyCombo.Items.Add(p.Label);

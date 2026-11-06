@@ -144,7 +144,7 @@ public partial class MainWindow : Window
         Icon = IconHelper.AppIcon;
         AppIconImage.Source = IconHelper.AppIcon;
         var dbPath = ResolveDbPath();
-        _store = new SqliteStateStore(dbPath);
+        _store = OpenStoreOrRecover(dbPath);
         _settings = AppSettings.Load(Path.GetDirectoryName(dbPath)!);
         JobList.ItemsSource = _jobs;
         CompareList.ItemsSource = _flat;
@@ -222,6 +222,38 @@ public partial class MainWindow : Window
             >= 50 => StatLow,
             _ => Brushes.Transparent
         };
+    }
+
+    /// <summary>
+    /// Mo state.db. File hong (loi P0 H1a: mat dien / day o luc ghi, bi cat cut) truoc day nem SqliteException ngay
+    /// khi mo -> app tat ngam, khong bao gi. Nay hoi nguoi dung: GIU file hong (doi ten, de cuu sau) + tao du lieu moi,
+    /// hoac thoat. Khong bao gio xoa file hong va khong tu chay Job nao truoc khi nguoi dung chon.
+    /// </summary>
+    private static SqliteStateStore OpenStoreOrRecover(string dbPath)
+    {
+        SqliteStateStore? store = null;
+        try
+        {
+            store = new SqliteStateStore(dbPath);
+            store.ListJobs(); // doc thu 1 bang: file cat cut co the mo duoc nhung hong khi doc
+            return store;
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException ex)
+        {
+            try { store?.Dispose(); } catch (Exception) { /* dang hong - bo qua */ }
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); // nha khoa file truoc khi doi ten
+            var keep = $"{dbPath}.hong-{DateTime.Now:yyyyMMdd-HHmmss}";
+            var answer = MessageBox.Show(
+                $"Du lieu cua FolderSync bi HONG, khong mo duoc:\n{dbPath}\n({ex.Message})\n\n" +
+                $"Yes: giu file hong lai (doi ten thanh {Path.GetFileName(keep)}) va tao du lieu moi - ban se phai " +
+                "tao lai cac Job. File du lieu trong cac folder dong bo KHONG bi dong vao.\n" +
+                "No: thoat FolderSync (de tu sao luu / khoi phuc state.db truoc).",
+                "FolderSync - du lieu bi hong", MessageBoxButton.YesNo, MessageBoxImage.Error);
+            if (answer != MessageBoxResult.Yes) Environment.Exit(1);
+            foreach (var suffix in new[] { "", "-wal", "-shm", "-journal" })
+                if (File.Exists(dbPath + suffix)) File.Move(dbPath + suffix, keep + suffix);
+            return new SqliteStateStore(dbPath);
+        }
     }
 
     // Ban portable: neu co file portable.flag canh file .exe thi state nam ngay trong thu muc app.
@@ -1261,6 +1293,7 @@ public partial class MainWindow : Window
             Log($"{prefix}Job '{runner.Job.Name}' DA HUY BOI CHOT AN TOAN: {r.AbortReason}");
             NotifyIfHidden($"Job '{runner.Job.Name}' da bi HUY", r.AbortReason ?? "Chot an toan");
             UpdateTrayStatus();
+            if (outcome.StateLost) ConfirmLostState(runner, outcome, manual: report.Trigger == "thu cong");
             return;
         }
 
@@ -1295,6 +1328,37 @@ public partial class MainWindow : Window
             RenderSelectedView();
             UpdateDriveHeader(runner.Job);
         }
+    }
+
+    /// <summary>
+    /// Loi P0 H1b: state cua Job bi mat ma lan chay co lenh xoa/doi ten -> engine da HUY. Chi nguoi dung (bam Dong bo
+    /// tay) moi duoc quyet "chay lai tu dau" sau khi xem bang hanh dong; lan chay tu dong chi bao, khong bao gio tu xac nhan.
+    /// </summary>
+    private void ConfirmLostState(JobRunner runner, SessionOutcome outcome, bool manual)
+    {
+        if (!manual)
+        {
+            Log($"Job '{runner.Job.Name}': trang thai dong bo bi MAT - Job se khong xoa gi cho toi khi ban chon Job, " +
+                "bam Phan tich xem truoc roi bam Dong bo va xac nhan.");
+            return;
+        }
+        int deletes = outcome.Actions.Count(a => a.Kind is SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight);
+        int moves = outcome.Actions.Count(a => a.Kind is SyncActionKind.MoveLeft or SyncActionKind.MoveRight);
+        if (MessageBox.Show(
+                $"Trang thai dong bo cua Job '{runner.Job.Name}' bi MAT (co the do file state.db bi hong).\n" +
+                "Lan chay vua roi da bi HUY, chua dong vao file nao.\n\n" +
+                $"Neu chay lai tu dau, Job se thuc hien: {deletes} lenh XOA, {moves} lenh doi ten (bang ben duoi, chip \"Xoa\").\n" +
+                "File bi xoa/ghi de duoc dua vao .foldersync_history (khoi phuc duoc).\n\n" +
+                "Ban da kiem tra bang hanh dong va muon CHAY LAI JOB TU DAU?",
+                "Trang thai dong bo bi mat", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
+            != MessageBoxResult.Yes)
+        {
+            Log($"Job '{runner.Job.Name}': giu nguyen, khong chay lai (state bi mat chua duoc xac nhan).");
+            return;
+        }
+        _store.AcceptLostState(runner.Id);
+        Log($"Job '{runner.Job.Name}': nguoi dung xac nhan chay lai tu dau sau khi mat state.");
+        _ = runner.RunAsync("thu cong", runner.AutoProgress);
     }
 
     // ---------- Thao tac thu cong ----------
@@ -1356,6 +1420,9 @@ public partial class MainWindow : Window
                 return;
             }
             foreach (var err in outcome.ScanErrors) Log("Quet: " + err);
+            if (outcome.StateLost)
+                Log($"CANH BAO Job '{runner.Job.Name}': trang thai dong bo bi MAT (Job da tung dong bo nhung state trong). " +
+                    "Lenh xoa/doi ten se bi chan cho toi khi ban bam Dong bo va xac nhan chay lai tu dau.");
             int real = outcome.Actions.Count(a => a.Kind != SyncActionKind.Skip);
             ViewOf(runner.Id).ProgressVisible = false;
             view.Indeterminate = false;

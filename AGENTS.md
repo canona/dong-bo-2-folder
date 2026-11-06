@@ -48,7 +48,7 @@ File này dành cho **mọi AI agent** (Claude, Codex, Cursor, Copilot, Gemini�
 ## 2. Bắt đầu nhanh
 
 ```powershell
-# Test engine - Windows hien tai: TONG: 357 PASS, 2 FAIL (H1b, H1c = loi P0 chua sua, FAIL co chu y); Linux them 1 FAIL watcher da biet (tu don thu muc tam khi chay xong)
+# Test engine - Windows hien tai: TONG: 377 PASS, 0 FAIL (loi P0 H1 da sua); Linux them 1 FAIL watcher da biet (tu don thu muc tam khi chay xong)
 dotnet run --project tests\FolderSync.Core.Harness
 
 # Build + chay app
@@ -154,9 +154,10 @@ Mỗi điều từng là **lỗi mất dữ liệu thật** và đều có test 
 
 ---
 
-## 6. Trạng thái hiện tại (15/10/2026)
+## 6. Trạng thái hiện tại (06/11/2026)
 
-- Bản **0.3.2** (06/11/2026, nhánh `fix/thu-muc-rong-va-do-rong-cot`): sửa lỗi thư mục rỗng bị xóa ở nguồn (báo Điện Biên), đồng bộ thư mục rỗng, chỉnh độ rộng cột cây so sánh. Harness Windows **357 PASS + 2 FAIL**. Bản phát hành gần nhất trên GitHub vẫn là `v0.3.1-internal` (22/10/2026): đã gộp bộ test khó PR #3 / #5 / #10 / #11 / #9 + sửa race Hủy. Harness lúc đó **304 PASS + 2 FAIL** (H1b/H1c — lỗi P0 H1 chưa sửa: mất/hỏng `file_state` hoặc `settings_json` thì Mirror có thể xóa file ở đích). App build 0 lỗi.
+- Nhánh `fix/h1-state-hong` (bản 0.3.3): **sửa lỗi P0 H1** — state mất thì chặn xóa chờ xác nhận, cấu hình hỏng thì không chạy, DB hỏng thì hỏi giữ file hỏng + tạo mới. Harness Windows **377 PASS, 0 FAIL** (fuzz 2.000 bước).
+- `main` = **0.3.2** (PR #13, Release `v0.3.2-internal`): sửa lỗi thư mục rỗng bị xóa ở nguồn (báo Điện Biên), đồng bộ thư mục rỗng, chỉnh độ rộng cột. Harness lúc đó 357 PASS + 2 FAIL (H1b/H1c). Trước đó `v0.3.1-internal` (22/10/2026): gộp bộ test khó PR #3 / #5 / #10 / #11 / #9 + sửa race Hủy.
 - Quy mô: Core ~2.300 dòng, App ~3.000 dòng (riêng `MainWindow.xaml.cs` ~1.200), harness ~1.300 dòng.
 
 ### Hạn chế đã biết

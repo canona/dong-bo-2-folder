@@ -26,7 +26,10 @@ public sealed record SessionOutcome(
     IReadOnlyDictionary<string, FileEntry>? Left = null,
     IReadOnlyDictionary<string, FileEntry>? Right = null,
     int HashedFiles = 0,
-    long HashedBytes = 0);
+    long HashedBytes = 0,
+    /// <summary>Job da tung dong bo nhung file_state rong (state bi mat/hong - loi P0 H1b). Co lenh xoa/doi ten thi
+    /// lan chay bi chan cho toi khi nguoi dung xac nhan (SqliteStateStore.AcceptLostState).</summary>
+    bool StateLost = false);
 
 /// <summary>
 /// Dieu phoi 1 Job theo dung triet ly GoodSync (Ke hoach muc 1.1):
@@ -344,8 +347,20 @@ public sealed class SyncSession
             scanErrors.Add(blockReason);
         }
 
+        // State rong ma Job DA TUNG luu state (H1b): mat/hong DB, khong phai lan chay dau. Coi la lan dau thi moc chot %
+        // = Trai + Phai -> Mirror xoa duoc 12/20 file o Phai ma khong bi chan. Chan moi lenh xoa/doi ten, ke ca Force,
+        // cho toi khi nguoi dung xem truoc va xac nhan chay lai tu dau. Lenh chep van chay duoc (khong suy ra "da xoa").
+        bool stateLost = state.Count == 0 && _store.LoadStateFileCount(_jobId) is > 0;
+        if (stateLost && destructive && blockReason is null)
+        {
+            blockReason = $"Chot an toan: trang thai dong bo cua Job bi MAT (lan truoc co {_store.LoadStateFileCount(_jobId)} file, " +
+                          "nay trong) - co the do file state.db bi hong. Khong suy ra 'da xoa' tu du lieu thieu: huy toan bo, " +
+                          "chua dong vao file nao. Bam Phan tich xem truoc, roi Dong bo va xac nhan 'chay lai tu dau'.";
+            scanErrors.Add(blockReason);
+        }
+
         return new AnalysisContext(
-            new SessionOutcome(actions, null, scanErrors, left, right, hashedFiles, hashedBytes),
+            new SessionOutcome(actions, null, scanErrors, left, right, hashedFiles, hashedBytes, stateLost),
             leftScan with { Entries = left, FailedPaths = failedLeft },
             rightScan with { Entries = right, FailedPaths = failedRight },
             state, blockReason, dirState);

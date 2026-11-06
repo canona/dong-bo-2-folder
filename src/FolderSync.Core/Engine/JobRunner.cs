@@ -148,6 +148,7 @@ public sealed class JobRunner : IDisposable
             SetState(JobRunState.Analyzing);
             return await Task.Run(() =>
             {
+                ThrowIfSettingsCorrupt();
                 RunScript(Options.ScriptPreAnalyze, "", null);
                 return CreateSession().AnalyzeOnly(progress, cts.Token);
             });
@@ -259,6 +260,7 @@ public sealed class JobRunner : IDisposable
             var sink = new OwnPathRecorder(this, progress);
             outcome = await Task.Run(() =>
             {
+                ThrowIfSettingsCorrupt();
                 RunScript(Options.ScriptPreAnalyze, "", null);
                 var oc = CreateSession().Run(sink, cts.Token, _pause);
                 RunScript(Options.ScriptPostSync, oc.Result!.Aborted ? "aborted" : "", oc.Result);
@@ -314,6 +316,18 @@ public sealed class JobRunner : IDisposable
         return outcome;
     }
 
+    /// <summary>
+    /// Cau hinh Job hong (H1c): chay bang mac dinh se am tham bo Exclude / nguong xoa rieng cua Job -> Mirror xoa file
+    /// nguoi dung da loai tru. Tu choi chay (loi ro rang) cho toi khi Tuy chon duoc Luu lai.
+    /// </summary>
+    private void ThrowIfSettingsCorrupt()
+    {
+        if (Options.SettingsCorrupt)
+            throw new InvalidDataException(
+                $"Cau hinh (Tuy chon) cua Job '{Job.Name}' bi hong, khong doc duoc - Job KHONG chay de tranh xoa nham. " +
+                "Mo Tuy chon cua Job, kiem tra lai bo loc / nguong an toan roi bam Luu.");
+    }
+
     private static string Summarize(SessionOutcome? o, Exception? error)
     {
         if (error is OperationCanceledException) return "Da huy theo yeu cau";
@@ -321,6 +335,7 @@ public sealed class JobRunner : IDisposable
         var r = o?.Result;
         if (r is null) return "";
         if (r.Canceled) return $"Da huy giua chung (da xong copy {r.Copied}, xoa {r.Deleted})";
+        if (r.Aborted && o!.StateLost) return "Da huy: trang thai dong bo bi mat - can xac nhan";
         if (r.Aborted) return "Da huy (chot an toan)";
         int changed = r.Copied + r.Deleted + r.Moved;
         return changed == 0 && r.Errors.Count == 0 && r.Conflicts == 0

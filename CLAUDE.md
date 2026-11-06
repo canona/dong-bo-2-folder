@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\packaging\build-release.ps1 -IsccPath
 - `FolderSync.slnx` là định dạng solution mới, cần .NET SDK ≥ 9.0.200. Máy chỉ có SDK 8 thì build từng `.csproj` như trên.
 - Đang chạy app thì `dotnet build` App sẽ lỗi khóa file exe → đóng app trước (`taskkill /IM FolderSync.App.exe /F`).
 - Build WPF bị ngắt giữa chừng có thể để lại `src/FolderSync.App/FolderSync.App_*_wpftmp.csproj` → xóa, không commit.
-- Hiện tại: **359 test** — Windows (06/11/2026, bản 0.3.2, fuzz 2.000 bước): **357 PASS + 2 FAIL** = H1b, H1c (repro lỗi P0 H1 CHƯA SỬA, giữ FAIL có chủ ý); Linux thêm 1 FAIL watcher đã biết. Fuzz HARD-A1 mặc định 2.000 bước (~26 phút); chạy nhanh: `$env:HARD_MONKEY_STEPS="200"` (~5 phút). Harness tự dọn thư mục tạm `%TEMP%\foldersync-*` khi chạy xong. Build App 0 error / 0 warning.
+- Hiện tại: **377 test** — Windows (06/11/2026, nhánh `fix/h1-state-hong`, fuzz 2.000 bước): **377 PASS, 0 FAIL** (lỗi P0 H1 đã sửa, H1b/H1c nay PASS); Linux thêm 1 FAIL watcher đã biết. Chạy nhanh từng nhóm: `-- --only=dir`, `-- --only=hard3`. Fuzz HARD-A1 mặc định 2.000 bước (~26 phút); chạy nhanh: `$env:HARD_MONKEY_STEPS="200"` (~5 phút). Harness tự dọn thư mục tạm `%TEMP%\foldersync-*` khi chạy xong. Build App 0 error / 0 warning.
 
 ## Cấu trúc
 
@@ -106,6 +106,9 @@ Mỗi điều dưới đây từng là lỗi thật (làm mất dữ liệu) và
 10. **Một Job không bao giờ chạy 2 phiên chồng nhau** (khóa theo Id trong `JobRunner`; `RunAsync` trả `null` khi đang bận). Các Job khác nhau thì chạy song song.
 11. **Chế độ liên tục không tự kích hoạt bằng file chính nó ghi**, nhưng cũng không được bỏ sót thay đổi thật xảy ra ngay sau / trong lúc chạy (nhận diện bằng ảnh chụp file, chạy lại khi bẩn).
 12. **Chỉ một phiên bản app chạy** (mutex `FolderSyncSingleInstance` trong `App.xaml.cs`, trùng `AppMutex` của bộ cài): 2 tiến trình cùng mở 1 `state.db` = 2 runner cho cùng 1 Job, chạy chồng nhau.
+13. **State mất ≠ lần chạy đầu** (lỗi P0 H1b): `jobs.state_files` = số file state ở lần lưu gần nhất (`SaveState` ghi, đổi folder đặt NULL, migration đếm `file_state` có sẵn). `file_state` rỗng mà `state_files > 0` → `SessionOutcome.StateLost`, mọi lệnh xóa/đổi tên bị chặn (kể cả `Force`) cho tới khi người dùng bấm Đồng bộ tay và xác nhận (`AcceptLostState`). Lần chạy tự động không bao giờ tự xác nhận.
+14. **Cấu hình hỏng không chạy** (H1c): `JobOptions.FromJson` lỗi → `SettingsCorrupt` (không ghi vào JSON); `JobRunner` từ chối Phân tích/Đồng bộ (`InvalidDataException`) cho tới khi Tùy chọn được Lưu lại. Không bao giờ âm thầm dùng mặc định (mất Exclude, ngưỡng xóa).
+15. **DB hỏng lúc mở** (H1a): `SqliteStateStore` lỗi khởi tạo phải đóng kết nối (nhả khóa file); `MainWindow.OpenStoreOrRecover` hỏi người dùng, đổi tên file hỏng thành `state.db.hong-<thời gian>` (không xóa) rồi tạo DB mới, hoặc thoát.
 
 ## Quy ước code
 

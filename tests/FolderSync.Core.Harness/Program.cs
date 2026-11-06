@@ -62,6 +62,15 @@ var dirSync = EmptyDirTests.Run();
 pass += dirSync.pass; fail += dirSync.fail;
 // Chay nhanh rieng nhom thu muc rong khi dang sua (bo qua fuzz 26 phut): --only=dir
 if (args.Contains("--only=dir")) goto Cleanup;
+// Chay nhanh rieng nhom state/cau hinh hong + E4/F1/D2 (loi P0 H1): --only=hard3
+if (args.Contains("--only=hard3"))
+{
+    var onlyHard3 = TimeCorruptionHardTests.Run();
+    pass += onlyHard3.pass; fail += onlyHard3.fail;
+    var onlyH1 = StateLostTests.Run();
+    pass += onlyH1.pass; fail += onlyH1.fail;
+    goto Cleanup;
+}
 
 var p1 = P1Tests.Run();
 pass += p1.pass; fail += p1.fail;
@@ -83,6 +92,8 @@ var hard = JobRunnerHardTests.Run();
 pass += hard.pass; fail += hard.fail;
 var hard3 = TimeCorruptionHardTests.Run();
 pass += hard3.pass; fail += hard3.fail;
+var h1fix = StateLostTests.Run();
+pass += h1fix.pass; fail += h1fix.fail;
 var monkey = HardMonkeyTests.Run();
 pass += monkey.pass; fail += monkey.fail;
 var renames = HardRenameTests.Run();

@@ -41,7 +41,7 @@ dotnet run --project src\FolderSync.App\FolderSync.App.csproj
 dotnet run --project tests\FolderSync.Core.Harness
 ```
 
-Kết quả mong đợi ở dòng cuối (Windows, 06/11/2026): `TONG: 357 PASS, 2 FAIL` — 2 FAIL là H1b/H1c, tái hiện lỗi P0 H1 **chưa sửa**, được giữ FAIL có chủ ý (trên Linux thêm 1 FAIL watcher đã biết). Bộ fuzz mặc định chạy khoảng 26 phút; muốn nhanh thì đặt `set HARD_MONKEY_STEPS=200` trước khi chạy (khoảng 5 phút).
+Kết quả mong đợi ở dòng cuối (Windows, 06/11/2026): `TONG: 377 PASS, 0 FAIL` (trên Linux thêm 1 FAIL watcher đã biết). Bộ fuzz mặc định chạy khoảng 26 phút; muốn nhanh thì đặt `set HARD_MONKEY_STEPS=200` trước khi chạy (khoảng 5 phút).
 
 ---
 
@@ -119,7 +119,12 @@ Các bước:
   - **2 chiều**: thư mục rỗng ở bên nào cũng được tạo sang bên kia. Lần đầu chỉ tạo, không suy ra "đã xóa"; từ lần sau xóa thư mục rỗng ở 1 bên thì bên kia cũng xóa.
   - Không muốn: bỏ tích ô trên cho Job đó (khi tắt, app không tạo và không xóa thư mục rỗng nào).
 - **Mới — chỉnh độ rộng cột** của bảng so sánh: kéo mép phải tiêu đề cột; nhấp đúp mép = độ rộng mặc định; chuột phải dòng tiêu đề → *Khoi phuc do rong cot mac dinh*. Cột "Mục" nay rộng cố định (340 px) thay vì tự giãn.
-- **Hạn chế vẫn còn (lỗi P0 H1 chưa sửa)**: nếu `state.db` bị mất/hỏng thì chế độ **Mirror** có thể xóa file ở đích — không dùng Mirror trên dữ liệu không có bản sao lưu.
+- **Hạn chế của 0.3.2 (lỗi P0 H1)**: nếu `state.db` bị mất/hỏng thì chế độ **Mirror** có thể xóa file ở đích — đã sửa ở bản kế tiếp (xem dưới).
+
+### Lưu ý riêng bản 0.3.3 — xử lý dữ liệu trạng thái bị hỏng
+- **`state.db` hỏng không mở được**: app báo lỗi và hỏi — *Yes* = giữ file hỏng (đổi tên `state.db.hong-<thời gian>`, gửi cho người hỗ trợ nếu cần cứu) và tạo dữ liệu mới (phải tạo lại các Job); *No* = thoát để tự khôi phục `state.db` từ bản sao lưu. File trong các folder đồng bộ không bị động vào.
+- **Trạng thái đồng bộ của 1 Job bị mất** (Job đã từng đồng bộ nhưng app không còn nhớ): lần chạy có lệnh xóa/đổi tên bị **HỦY**, chưa động vào file nào; Job tự động chỉ ghi cảnh báo, không xóa gì. Cách xử lý: chọn Job → **Phân tích** xem bảng (chip *Xoa*) → **Đồng bộ** → app hỏi *"chạy lại Job từ đầu?"* → chỉ chọn *Yes* khi các lệnh xóa đúng ý.
+- **Cấu hình (Tùy chọn) của Job bị hỏng**: Job báo lỗi đỏ và **không chạy** (kể cả Phân tích). Mở **Tùy chọn** của Job — app cảnh báo các ô đang là giá trị mặc định — kiểm tra lại tab Bộ lọc và Ngưỡng an toàn xóa rồi bấm **Lưu**.
 
 ## Lỗi thường gặp
 

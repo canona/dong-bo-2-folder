@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using FolderSync.Core.Engine;
 
 namespace FolderSync.Core.Models;
@@ -94,9 +95,15 @@ public sealed class JobOptions
     {
         if (string.IsNullOrWhiteSpace(json)) return new JobOptions();
         if (json.Trim() == "{}") return Legacy();
-        try { return JsonSerializer.Deserialize<JobOptions>(json) ?? new JobOptions(); }
-        catch (JsonException) { return new JobOptions(); }
+        try { return JsonSerializer.Deserialize<JobOptions>(json) ?? new JobOptions { SettingsCorrupt = true }; }
+        // Loi P0 H1c: truoc day am tham tra mac dinh Job moi -> mat Exclude, nguong xoa 10% thanh 50% -> Mirror xoa file
+        // ngoai pham vi o dich. Nay danh dau hong: JobRunner tu choi chay cho toi khi nguoi dung mo Tuy chon va Luu lai.
+        catch (JsonException) { return new JobOptions { SettingsCorrupt = true }; }
     }
+
+    /// <summary>settings_json trong DB khong doc duoc (hong). KHONG luu vao JSON. Job khong duoc chay khi co co nay.</summary>
+    [JsonIgnore]
+    public bool SettingsCorrupt { get; private init; }
 
     // ---------- Mapping sang engine ----------
     public SyncFilter BuildFilter()

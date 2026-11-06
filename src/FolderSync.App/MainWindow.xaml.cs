@@ -162,6 +162,8 @@ public partial class MainWindow : Window
         CopyrightNotice.Text = $"{AppInfo.ShortNotice}  •  v{AppInfo.Version}";
         // Cay luon hien thanh cuon doc -> tieu de chua cho dung bang do de cac cot thang hang
         TreeHeaderGrid.Margin = new Thickness(0, 0, SystemParameters.VerticalScrollBarWidth, 0);
+        _columns = (CompareColumns)FindResource("CompareCols");
+        _columns.Load(_settings.CompareColumnWidths);
         Closed += (_, _) =>
         {
             foreach (var r in _runners.Values) r.Dispose(); // dung watcher/timer cua moi Job
@@ -648,6 +650,16 @@ public partial class MainWindow : Window
         catch { return ("(khong co)", null, null); }
     }
 
+    private static (string Text, long? Bytes, DateTime? When) ProbeDir(string root, string rel)
+    {
+        try
+        {
+            var di = new DirectoryInfo(Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar)));
+            return di.Exists ? ("(thu muc)", null, di.LastWriteTime) : ("(khong co)", null, null);
+        }
+        catch { return ("(khong co)", null, null); }
+    }
+
     private static string FormatWhen(DateTime? when) => when?.ToString("dd/MM/yyyy HH:mm") ?? "";
 
     /// <summary>
@@ -658,11 +670,15 @@ public partial class MainWindow : Window
         IReadOnlyDictionary<string, FileEntry>? left = null, IReadOnlyDictionary<string, FileEntry>? right = null)
         => actions.Select(a =>
         {
-            var (lText, lBytes, lWhen) = left is null ? Probe(job.LeftRoot, a.RelativePath) : FromScan(left, a.RelativePath);
-            var (rText, rBytes, rWhen) = right is null ? Probe(job.RightRoot, a.RelativePath) : FromScan(right, a.RelativePath);
-            return new ActionRow(KindName(a.Kind), a.RelativePath, a.TargetPath ?? "", a.Reason)
+            // Thu muc rong: it dong (chi thu muc la) nen doc thang dia - ket qua quet chi co file
+            var (lText, lBytes, lWhen) = a.IsDirectory ? ProbeDir(job.LeftRoot, a.RelativePath)
+                : left is null ? Probe(job.LeftRoot, a.RelativePath) : FromScan(left, a.RelativePath);
+            var (rText, rBytes, rWhen) = a.IsDirectory ? ProbeDir(job.RightRoot, a.RelativePath)
+                : right is null ? Probe(job.RightRoot, a.RelativePath) : FromScan(right, a.RelativePath);
+            return new ActionRow(KindName(a.Kind, a.IsDirectory), a.RelativePath, a.TargetPath ?? "", a.Reason)
             {
                 Kind = a.Kind,
+                IsDirectory = a.IsDirectory,
                 LSizeText = lText, RSizeText = rText,
                 LBytes = lBytes, RBytes = rBytes,
                 LWhen = lWhen, RWhen = rWhen,
@@ -748,9 +764,21 @@ public partial class MainWindow : Window
     /// (copy: phia dich co size/ngay; xoa: "(khong co)"...), khong phai so lieu cu luc Phan tich.
     /// </summary>
     private static void RefreshRowFromDisk(JobRecord job, ActionRow row, bool ok)
-        => row.ApplySnapshot(Probe(job.LeftRoot, row.DuongDan), Probe(job.RightRoot, row.DuongDan), ok, FormatWhen);
+    {
+        if (row.IsDirectory)
+            row.ApplySnapshot(ProbeDir(job.LeftRoot, row.DuongDan), ProbeDir(job.RightRoot, row.DuongDan), ok, FormatWhen);
+        else
+            row.ApplySnapshot(Probe(job.LeftRoot, row.DuongDan), Probe(job.RightRoot, row.DuongDan), ok, FormatWhen);
+    }
 
-    private static string DoneText(SyncAction a, string? destination) => a.Kind switch
+    private static string DoneText(SyncAction a, string? destination) => a.IsDirectory ? a.Kind switch
+    {
+        SyncActionKind.CopyLeftToRight => "Da tao thu muc o Phai",
+        SyncActionKind.CopyRightToLeft => "Da tao thu muc o Trai",
+        SyncActionKind.DeleteLeft => "Da xoa thu muc rong o Trai",
+        SyncActionKind.DeleteRight => "Da xoa thu muc rong o Phai",
+        _ => "Xong"
+    } : a.Kind switch
     {
         SyncActionKind.CopyLeftToRight => a.TargetPath is null ? "Da chep sang Phai" : "Da tao ban conflict o Phai",
         SyncActionKind.CopyRightToLeft => a.TargetPath is null ? "Da chep sang Trai" : "Da tao ban conflict o Trai",
@@ -770,6 +798,42 @@ public partial class MainWindow : Window
         SyncActionKind.Conflict => "⚠",
         _ => "—"
     };
+
+    // ---------- Do rong cot cay so sanh (keo mep phai o tieu de) ----------
+
+    private readonly CompareColumns _columns;
+
+    private void ColumnThumb_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        // Thumb nam o mep phai cot va di chuyen theo mep -> HorizontalChange la do lech so voi vi tri hien tai
+        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out int i))
+            _columns.Set(i, _columns.Get(i) + e.HorizontalChange);
+    }
+
+    private void ColumnThumb_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        => SaveColumnWidths();
+
+    private void ColumnThumb_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out int i))
+        {
+            _columns.Set(i, CompareColumns.Defaults[i]);
+            SaveColumnWidths();
+            e.Handled = true;
+        }
+    }
+
+    private void ResetColumnWidths_Click(object sender, RoutedEventArgs e)
+    {
+        _columns.Reset();
+        SaveColumnWidths();
+    }
+
+    private void SaveColumnWidths()
+    {
+        _settings.CompareColumnWidths = _columns.IsDefault ? null : _columns.Snapshot();
+        _settings.Save();
+    }
 
     // ---------- Loc + cay ----------
 
@@ -891,15 +955,19 @@ public partial class MainWindow : Window
         }
         long lSum = 0, rSum = 0; bool lAny = false, rAny = false; int work = 0;
         DateTime? lMax = null, rMax = null;
+        // Chi chua dong thu muc rong (khong co file) nhung thu muc van ton tai -> "(thu muc)", khong phai "(khong co)"
+        bool lDir = false, rDir = false;
         foreach (var child in node.Children)
         {
             var a = Aggregate(child);
             lSum += a.LSum; rSum += a.RSum; lAny |= a.LAny; rAny |= a.RAny; work += a.Work;
             if (a.LMax is { } lm && (lMax is null || lm > lMax)) lMax = lm;
             if (a.RMax is { } rm && (rMax is null || rm > rMax)) rMax = rm;
+            lDir |= child.LSizeText is "(thu muc)";
+            rDir |= child.RSizeText is "(thu muc)";
         }
-        node.LSizeText = lAny ? FormatSize(lSum) : "(khong co)";
-        node.RSizeText = rAny ? FormatSize(rSum) : "(khong co)";
+        node.LSizeText = lAny ? FormatSize(lSum) : lDir ? "(thu muc)" : "(khong co)";
+        node.RSizeText = rAny ? FormatSize(rSum) : rDir ? "(thu muc)" : "(khong co)";
         node.LDateText = FormatWhen(lMax);
         node.RDateText = FormatWhen(rMax);
         node.Direction = work > 0 ? work.ToString() : "";
@@ -1550,7 +1618,14 @@ public partial class MainWindow : Window
         _ => "Hoi thu cong"
     };
 
-    private static string KindName(SyncActionKind kind) => kind switch
+    private static string KindName(SyncActionKind kind, bool isDirectory = false) => isDirectory ? kind switch
+    {
+        SyncActionKind.CopyLeftToRight => "Tao thu muc o Phai",
+        SyncActionKind.CopyRightToLeft => "Tao thu muc o Trai",
+        SyncActionKind.DeleteLeft => "Xoa thu muc rong o Trai",
+        SyncActionKind.DeleteRight => "Xoa thu muc rong o Phai",
+        _ => "Bo qua"
+    } : kind switch
     {
         SyncActionKind.CopyLeftToRight => "Copy Trai -> Phai",
         SyncActionKind.CopyRightToLeft => "Copy Phai -> Trai",
@@ -1582,6 +1657,8 @@ public sealed class ActionRow : INotifyPropertyChanged
     public string Loai { get; }
     public string DuongDan { get; }
     public SyncActionKind Kind { get; init; }
+    /// <summary>Dong cho THU MUC RONG (tao/xoa thu muc) - hien icon thu muc, khong co dung luong.</summary>
+    public bool IsDirectory { get; init; }
     public string TrangThai { get => _trangThai; set => Set(ref _trangThai, value); }
     public string Dich { get => _dich; set => Set(ref _dich, value); }
     public string ThoiGian { get => _thoiGian; set => Set(ref _thoiGian, value); }
@@ -1712,8 +1789,8 @@ public sealed class CompareNode : INotifyPropertyChanged
     public Thickness Indent => new(Level * 16, 0, 0, 0);
     public Visibility ToggleVisibility => IsFolder ? Visibility.Visible : Visibility.Hidden;
     // Segoe MDL2 Assets: E8B7 = folder, E8A5 = tai lieu
-    public string IconGlyph => IsFolder ? "\uE8B7" : "\uE8A5";
-    public Brush IconBrush => IsFolder ? FolderBrush : GrayBrush;
+    public string IconGlyph => IsFolder || Row?.IsDirectory == true ? "\uE8B7" : "\uE8A5";
+    public Brush IconBrush => IsFolder || Row?.IsDirectory == true ? FolderBrush : GrayBrush;
     private static readonly Brush FolderBrush = Frozen(0xD9, 0x77, 0x06);
     public bool IsSelected
     {

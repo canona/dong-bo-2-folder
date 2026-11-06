@@ -72,6 +72,7 @@ public partial class JobOptionsWindow : Window
 
         CopyCreationTimeCheck.IsChecked = options.CopyCreationTime;
         CopyAttributesCheck.IsChecked = options.CopyAttributes;
+        SyncEmptyFoldersCheck.IsChecked = options.SyncEmptyFolders;
         DetectRenamesCheck.IsChecked = options.DetectRenames;
         CompareChecksumsCheck.IsChecked = options.CompareChecksums;
         FullContentCheck.IsChecked = options.FullContentCompare;
@@ -196,6 +197,7 @@ public partial class JobOptionsWindow : Window
             ScriptPostSync = PostScriptBox.Text.Trim(),
             CopyCreationTime = CopyCreationTimeCheck.IsChecked == true,
             CopyAttributes = CopyAttributesCheck.IsChecked == true,
+            SyncEmptyFolders = SyncEmptyFoldersCheck.IsChecked == true,
             DetectRenames = DetectRenamesCheck.IsChecked == true,
             CompareChecksums = CompareChecksumsCheck.IsChecked == true,
             FullContentCompare = FullContentCheck.IsChecked == true,

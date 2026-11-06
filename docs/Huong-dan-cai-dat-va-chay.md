@@ -41,7 +41,7 @@ dotnet run --project src\FolderSync.App\FolderSync.App.csproj
 dotnet run --project tests\FolderSync.Core.Harness
 ```
 
-Kết quả mong đợi ở dòng cuối (Windows, 22/10/2026): `TONG: 304 PASS, 2 FAIL` — 2 FAIL là H1b/H1c, tái hiện lỗi P0 H1 **chưa sửa**, được giữ FAIL có chủ ý (trên Linux thêm 1 FAIL watcher đã biết). Bộ fuzz mặc định chạy khoảng 26 phút; muốn nhanh thì đặt `set HARD_MONKEY_STEPS=200` trước khi chạy (khoảng 5 phút).
+Kết quả mong đợi ở dòng cuối (Windows, 06/11/2026): `TONG: 357 PASS, 2 FAIL` — 2 FAIL là H1b/H1c, tái hiện lỗi P0 H1 **chưa sửa**, được giữ FAIL có chủ ý (trên Linux thêm 1 FAIL watcher đã biết). Bộ fuzz mặc định chạy khoảng 26 phút; muốn nhanh thì đặt `set HARD_MONKEY_STEPS=200` trước khi chạy (khoảng 5 phút).
 
 ---
 
@@ -96,6 +96,30 @@ Kết quả trong thư mục `dist\`:
 3. Kiểm tra danh sách xong mới bấm **Đồng bộ (Sync)**.
 4. **Lần đầu hãy thử với 2 folder bản sao (copy thử nghiệm), chưa dùng ngay folder dữ liệu thật.** Đặc biệt chế độ **Mirror** sẽ xóa các file thừa ở Folder Phải cho giống hệt Folder Trái.
 5. File bị xóa/ghi đè không mất hẳn: chúng nằm trong thư mục `.foldersync_history` bên trong folder bị tác động, khôi phục bằng nút **Lịch sử / Khôi phục** trong app.
+
+## NÂNG CẤP LÊN BẢN MỚI (vd 0.3.1 → 0.3.2) — GIỮ NGUYÊN CẤU HÌNH CŨ
+
+Job, trạng thái đồng bộ và cài đặt **không nằm trong file .exe** nên nâng cấp đúng cách thì giữ nguyên:
+
+| Đang dùng | Dữ liệu nằm ở | Cách nâng cấp |
+|---|---|---|
+| Bộ cài `FolderSync-Setup-x.y.z.exe` | `%AppData%\FolderSync\` (`state.db`, `app-settings.json`) | Chạy `FolderSync-Setup-<bản mới>.exe` cài đè — bộ cài không đụng vào `%AppData%` |
+| Bản portable (zip) | Cạnh file exe: `state.db`, `app-settings.json`, `portable.flag` | Chỉ chép đè **`FolderSync.App.exe`** từ zip mới. **Không** chép đè 3 file kia (chép đè `state.db` = mất hết Job) |
+
+Các bước:
+1. **Thoát hẳn app**: chuột phải icon ở khay → **Thoát** (bấm X chỉ ẩn xuống khay, file exe vẫn bị khóa). Job đang chép thì đợi xong.
+2. **Sao lưu `state.db`** ra chỗ khác (phòng hờ — quay về bản cũ vẫn mở được DB này).
+3. Cài / chép bản mới, mở app → bấm **Phân tích** từng Job xem trước trước khi Đồng bộ (Job bật Liên tục sẽ tự chạy ngay khi mở app).
+
+### Lưu ý riêng bản 0.3.2
+- **Đã sửa**: thư mục mới tạo ở folder nguồn bị tự xóa sau một lúc (kể cả chế độ Backup).
+- **Mới — đồng bộ thư mục rỗng**, tùy chọn Job *"Dong bo ca thu muc rong"* (tab Nâng cao) **mặc định BẬT cho mọi Job, kể cả Job cũ**. Lần chạy đầu sau khi nâng cấp:
+  - **Backup**: mọi thư mục rỗng ở nguồn được tạo ở đích; không xóa gì ở đích.
+  - **Mirror**: thư mục **rỗng** chỉ có ở đích **sẽ bị xóa** (chỉ thư mục rỗng hoàn toàn; thư mục có file không bị đụng).
+  - **2 chiều**: thư mục rỗng ở bên nào cũng được tạo sang bên kia. Lần đầu chỉ tạo, không suy ra "đã xóa"; từ lần sau xóa thư mục rỗng ở 1 bên thì bên kia cũng xóa.
+  - Không muốn: bỏ tích ô trên cho Job đó (khi tắt, app không tạo và không xóa thư mục rỗng nào).
+- **Mới — chỉnh độ rộng cột** của bảng so sánh: kéo mép phải tiêu đề cột; nhấp đúp mép = độ rộng mặc định; chuột phải dòng tiêu đề → *Khoi phuc do rong cot mac dinh*. Cột "Mục" nay rộng cố định (340 px) thay vì tự giãn.
+- **Hạn chế vẫn còn (lỗi P0 H1 chưa sửa)**: nếu `state.db` bị mất/hỏng thì chế độ **Mirror** có thể xóa file ở đích — không dùng Mirror trên dữ liệu không có bản sao lưu.
 
 ## Lỗi thường gặp
 

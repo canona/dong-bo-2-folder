@@ -5,6 +5,27 @@
         Title="FolderSync - Dong bo 2 folder" Height="760" Width="1280"
         Background="{StaticResource PageBgBrush}"
         Loaded="Window_Loaded">
+    <Window.Resources>
+        <!-- Do rong cot cay so sanh dung chung cho tieu de + moi dong (xem CompareColumns) -->
+        <local:CompareColumns x:Key="CompareCols"/>
+        <!-- Tay keo mep phai cot tieu de: vach 1px, vung bam 7px, con tro <-> -->
+        <Style x:Key="ColumnResizeThumb" TargetType="Thumb">
+            <Setter Property="Width" Value="7"/>
+            <Setter Property="Margin" Value="0,0,-4,0"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="Cursor" Value="SizeWE"/>
+            <Setter Property="ToolTip" Value="Keo de doi do rong cot - nhap dup de tra ve mac dinh"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="Transparent">
+                            <Rectangle Width="1" Margin="0,5" HorizontalAlignment="Center" Fill="{StaticResource CardBorderBrush}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="58"/>
@@ -268,20 +289,26 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Tieu de cot cua cay so sanh. Do rong cac cot co dinh PHAI trung voi template dong ben duoi;
-                     le phai = be rong thanh cuon doc (cay luon hien thanh cuon) de cot thang hang tuyet doi. -->
+                <!-- Tieu de cot cua cay so sanh. Do rong cot bind vao CompareCols (chung voi template dong ben duoi);
+                     le phai = be rong thanh cuon doc (cay luon hien thanh cuon) de cot thang hang tuyet doi.
+                     ClipToBounds: tong cot vuot be rong (cua so hep) thi cat o mep phai giong het cac dong. -->
                 <Border Grid.Row="3" Background="{StaticResource HeaderRowBrush}"
-                        BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1,1,1,0">
+                        BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1,1,1,0" ClipToBounds="True">
                     <Grid x:Name="TreeHeaderGrid" Height="26">
+                        <Grid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Khoi phuc do rong cot mac dinh" Click="ResetColumnWidths_Click"/>
+                            </ContextMenu>
+                        </Grid.ContextMenu>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" MinWidth="200"/>
-                            <ColumnDefinition Width="96"/>
-                            <ColumnDefinition Width="128"/>
-                            <ColumnDefinition Width="44"/>
-                            <ColumnDefinition Width="96"/>
-                            <ColumnDefinition Width="128"/>
-                            <ColumnDefinition Width="90"/>
-                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="{Binding C0, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                            <ColumnDefinition Width="{Binding C1, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                            <ColumnDefinition Width="{Binding C2, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                            <ColumnDefinition Width="{Binding C3, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                            <ColumnDefinition Width="{Binding C4, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                            <ColumnDefinition Width="{Binding C5, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                            <ColumnDefinition Width="{Binding C6, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                            <ColumnDefinition Width="*" MinWidth="60"/>
                         </Grid.ColumnDefinitions>
                         <Grid.Resources>
                             <Style TargetType="TextBlock">
@@ -298,6 +325,21 @@
                         <TextBlock Grid.Column="5" Text="R Date" TextAlignment="Right"/>
                         <TextBlock Grid.Column="6" Text="Trang thai"/>
                         <TextBlock Grid.Column="7" Text="Ly do"/>
+                        <!-- Tay keo dat SAU cac TextBlock de nam tren cung (nhan chuot o mep cot) -->
+                        <Thumb Grid.Column="0" Tag="0" Style="{StaticResource ColumnResizeThumb}"
+                               DragDelta="ColumnThumb_DragDelta" DragCompleted="ColumnThumb_DragCompleted" MouseDoubleClick="ColumnThumb_DoubleClick"/>
+                        <Thumb Grid.Column="1" Tag="1" Style="{StaticResource ColumnResizeThumb}"
+                               DragDelta="ColumnThumb_DragDelta" DragCompleted="ColumnThumb_DragCompleted" MouseDoubleClick="ColumnThumb_DoubleClick"/>
+                        <Thumb Grid.Column="2" Tag="2" Style="{StaticResource ColumnResizeThumb}"
+                               DragDelta="ColumnThumb_DragDelta" DragCompleted="ColumnThumb_DragCompleted" MouseDoubleClick="ColumnThumb_DoubleClick"/>
+                        <Thumb Grid.Column="3" Tag="3" Style="{StaticResource ColumnResizeThumb}"
+                               DragDelta="ColumnThumb_DragDelta" DragCompleted="ColumnThumb_DragCompleted" MouseDoubleClick="ColumnThumb_DoubleClick"/>
+                        <Thumb Grid.Column="4" Tag="4" Style="{StaticResource ColumnResizeThumb}"
+                               DragDelta="ColumnThumb_DragDelta" DragCompleted="ColumnThumb_DragCompleted" MouseDoubleClick="ColumnThumb_DoubleClick"/>
+                        <Thumb Grid.Column="5" Tag="5" Style="{StaticResource ColumnResizeThumb}"
+                               DragDelta="ColumnThumb_DragDelta" DragCompleted="ColumnThumb_DragCompleted" MouseDoubleClick="ColumnThumb_DoubleClick"/>
+                        <Thumb Grid.Column="6" Tag="6" Style="{StaticResource ColumnResizeThumb}"
+                               DragDelta="ColumnThumb_DragDelta" DragCompleted="ColumnThumb_DragCompleted" MouseDoubleClick="ColumnThumb_DoubleClick"/>
                     </Grid>
                 </Border>
 
@@ -346,14 +388,14 @@
                             <DataTemplate DataType="{x:Type local:CompareNode}">
                                 <Grid Height="22" Background="{Binding RowBackground}">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" MinWidth="200"/>
-                                        <ColumnDefinition Width="96"/>
-                                        <ColumnDefinition Width="128"/>
-                                        <ColumnDefinition Width="44"/>
-                                        <ColumnDefinition Width="96"/>
-                                        <ColumnDefinition Width="128"/>
-                                        <ColumnDefinition Width="90"/>
-                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="{Binding C0, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                                        <ColumnDefinition Width="{Binding C1, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                                        <ColumnDefinition Width="{Binding C2, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                                        <ColumnDefinition Width="{Binding C3, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                                        <ColumnDefinition Width="{Binding C4, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                                        <ColumnDefinition Width="{Binding C5, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                                        <ColumnDefinition Width="{Binding C6, Source={StaticResource CompareCols}, Mode=OneWay}"/>
+                                        <ColumnDefinition Width="*" MinWidth="60"/>
                                     </Grid.ColumnDefinitions>
                                     <!-- Nen cot Trai / Phai nhu GoodSync -->
                                     <Border Grid.Column="1" Grid.ColumnSpan="2" Background="{StaticResource LeftCellBrush}"/>

@@ -317,6 +317,20 @@ Trạng thái: đã commit lên `main`, Release `v0.3.1-internal`.
 - **Phiên bản 0.3.1**: `Directory.Build.props` + `MyAppVersion` trong `FolderSync.iss`. `build-release.ps1` → `FolderSync-Setup-0.3.1.exe` (64,6 MB) + `FolderSync-portable.zip` (64,1 MB), exe ProductVersion 0.3.1, Company VTC Digital.
 - **Hạn chế đã biết** (ghi trong Release): (a) **lỗi P0 H1 chưa sửa** — mất/hỏng `file_state` hoặc `settings_json` thì Mirror có thể xóa file ở đích: không dùng Mirror trên dữ liệu không có sao lưu; (b) fuzz 10.000 bước chưa chạy; (c) chạy ngâm 7 ngày chưa chạy.
 
+## Đợt 21 — Thư mục mới tạo ở nguồn bị xóa (báo Điện Biên), đồng bộ thư mục rỗng, chỉnh độ rộng cột (06/11/2026, Claude Code)
+
+Nhánh `fix/thu-muc-rong-va-do-rong-cot`, phiên bản 0.3.2.
+
+- **Phản ánh**: Job Backup 1 chiều (không xóa ở đích), tạo folder mới ở ổ **nguồn**, một lúc sau folder bị xóa.
+- **Nguyên nhân**: cuối mỗi `SyncExecutor.Execute` có `PruneEmptyDirs(_leftRoot)` + `PruneEmptyDirs(_rightRoot)` xóa MỌI thư mục rỗng ở cả 2 phía, bất kể chế độ, kể cả lần chạy 0 hành động (thêm vào khi sửa lỗi đổi file↔thư mục của fuzz). Watcher bỏ qua sự kiện *tạo* thư mục nhưng đổi tên "New folder" → sự kiện Deleted cho tên cũ → Job liên tục chạy sau thời gian trễ → xóa thư mục vừa đổi tên.
+- **Repro trước** (`EmptyDirReproTests.cs`, chỉ dùng API 0.3.1): trên code cũ **8/8 FAIL** (Backup/Mirror/2 chiều + đúng kịch bản JobRunner liên tục tạo rồi đổi tên "New folder"); sau sửa PASS.
+- **Sửa**: bỏ dọn toàn cây; chỉ `PruneEmptyParents` (cha của file vừa xóa/đổi tên), lỗi I/O thì thử lại 1 lần cuối lần chạy; khi bật đồng bộ thư mục rỗng thì dừng ở thư mục mà phía kia vẫn có (xóa file cuối trong `a/` không xóa luôn `a`).
+- **Đồng bộ thư mục rỗng** (chủ repo duyệt làm luôn): `FolderScanner` trả `Directories` + `EmptyDirectories` (rỗng hoàn toàn, kể cả file bị lọc); `DirectoryPlanner` sinh lệnh cho thư mục lá: 1 chiều tạo ở đích; Mirror xóa thư mục rỗng thừa ở đích; 2 chiều dùng bảng mới `dir_state` (chưa có dòng = chỉ tạo, không bao giờ suy ra xóa); Backup + lan truyền xóa chỉ xóa thư mục từng đồng bộ. Thư mục rỗng chắn đường file cùng tên thì xóa trước (`DeletesFirstWhenPathKindClashes`). Lệnh tạo từ chối khi gốc đích không tồn tại (bất biến 2). Chốt RootMissing chặn cả lệnh thư mục; chốt % xóa không đếm thư mục (không mất dữ liệu). Watcher nhận sự kiện tạo thư mục; `FileSnapshot` phân biệt thư mục app vừa tạo với "không tồn tại". Tùy chọn Job `SyncEmptyFolders` (tab Nâng cao, mặc định bật cả Job cũ — an toàn vì Job cũ chưa có `dir_state`).
+- **Độ rộng cột**: `CompareColumns` (resource `CompareCols`) cho header + template dòng; `Thumb` ở mép phải 7 cột đầu, cột "Ly do" co giãn; nhấp đúp = mặc định; menu chuột phải tiêu đề = khôi phục; lưu `AppSettings.CompareColumnWidths`. Cột "Mục" từ `*` thành cố định 340 px (kiểu Explorer).
+- **Kiểm chứng**: harness Windows **359 test = 357 PASS + 2 FAIL** (H1b/H1c có chủ ý), 53 ca mới. Build App 0 lỗi / 0 cảnh báo. Chạy app bản portable với DB riêng: Phân tích hiện dòng thư mục (icon thư mục, "(thu muc)"), Đồng bộ tạo 3 thư mục rỗng ở đích, thư mục chỉ có ở đích còn nguyên; độ rộng cột lưu/nạp lại đúng.
+- **Hồi quy do bỏ dọn toàn cây — fuzz 2.000 bước bắt được** (200 bước thì không): (1) bộ sinh `HardMonkeyTests.OpRename` đổi tên file lên đường dẫn đang là thư mục rỗng sót lại → crash test; sửa bộ sinh theo đúng quy ước `WriteDisk` (người dùng xóa thư mục rỗng trước), không nới tiêu chí. (2) **Lỗi engine thật**, 2 chiều: Trái đổi thư mục `d` → file `d`, Phải xóa file trong `d/` nhưng còn thư mục con rỗng → chép file `d` lỗi I/O mãi, state lệch. Sửa: `SyncExecutor.RemoveEmptyTreeBlocking` — trước khi chép FILE vào đường dẫn đang là thư mục KHÔNG chứa file nào (kể cả ẩn/bị lọc) và không có junction/symlink thì xóa cây rỗng đó. Test `FileReplacesDirWithEmptyLeftovers` FAIL 4 ca trước sửa, PASS sau. Bài học (như đợt fuzz giai đoạn 2): luôn chạy fuzz cấu hình chuẩn 2.000 bước trước khi phát hành.
+- **Chưa làm**: đồng bộ hoa/thường tên thư mục rỗng; thư mục chỉ chứa file bị lọc thì không bị Mirror/2 chiều xóa (cố ý).
+
 ---
 
 ## Mẫu cho đợt tiếp theo

@@ -273,11 +273,14 @@ public static class SafetyTests
         {
             var left = NewTempDir("d14-l"); var right = NewTempDir("d14-r");
             Write(left, "bao-cao.txt", "noi dung");
-            Directory.CreateDirectory(Full(right, "bao-cao.txt")); // trung ten voi file can chep
+            // Trung ten voi file can chep, VA co file ben trong: tu 0.3.2 thu muc RONG chan duong bi don hop le
+            // (RemoveEmptyTreeBlocking) nen phai co du lieu thi buoc doi ten moi that bai nhu test can
+            Write(right, "bao-cao.txt/du-lieu.txt", "khong duoc xoa");
             var r = new SyncExecutor(left, right).Execute(
                 new List<SyncAction> { new(SyncActionKind.CopyLeftToRight, "bao-cao.txt", "test") }, 1);
             Check("Loi khi doi ten sang dich: ghi nhan loi, KHONG de lai file tam .tmp-sync",
-                r.Errors.Count == 1 && Directory.GetFiles(right).Length == 0,
+                r.Errors.Count == 1 && Directory.GetFiles(right).Length == 0
+                && File.Exists(Full(right, "bao-cao.txt/du-lieu.txt")),
                 $"errors={r.Errors.Count} files={string.Join(",", Directory.GetFiles(right).Select(Path.GetFileName))}");
         }
 

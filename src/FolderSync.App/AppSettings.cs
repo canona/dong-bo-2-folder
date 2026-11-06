@@ -21,6 +21,8 @@ public sealed class AppSettings
     public string LastMode { get; set; } = "Full";
     /// <summary>Da hien thong bao "FolderSync van chay o khay" lan dau chua.</summary>
     public bool TrayHintShown { get; set; }
+    /// <summary>Do rong cac cot cay so sanh do nguoi dung keo (null = mac dinh). Xem CompareColumns.</summary>
+    public double[]? CompareColumnWidths { get; set; }
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
     private string _path = "";

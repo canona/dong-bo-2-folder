@@ -9,7 +9,17 @@ public sealed record ScanResult(
     /// <summary>Duong dan tuong doi (file hoac thu muc) khong doc duoc - noi dung ben duoi KHONG duoc biet.</summary>
     IReadOnlyList<string> FailedPaths,
     /// <summary>Thu muc goc khong ton tai (USB chua cam, sai duong dan...).</summary>
-    bool RootMissing = false);
+    bool RootMissing = false,
+    /// <summary>Moi thu muc con duoc quet (khong gom goc, thu muc bi loc, thu muc khong doc duoc).</summary>
+    IReadOnlySet<string>? Directories = null,
+    /// <summary>Thu muc RONG HOAN TOAN tren dia (ke ca file bi loc cung khong co) - chi nhung thu muc nay moi
+    /// duoc phep xoa: thu muc chi chua file bi loc (Thumbs.db...) ma xoa thi se lap lai moi lan chay.</summary>
+    IReadOnlySet<string>? EmptyDirectories = null)
+{
+    public IReadOnlySet<string> Dirs => Directories ?? EmptySet;
+    public IReadOnlySet<string> EmptyDirs => EmptyDirectories ?? EmptySet;
+    private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>();
+}
 
 /// <summary>
 /// Quet cay thu muc thanh danh sach FileEntry theo duong dan tuong doi (chuan hoa '/').
@@ -39,6 +49,8 @@ public sealed class FolderScanner
         var entries = new Dictionary<string, FileEntry>(StringComparer.OrdinalIgnoreCase);
         var errors = new List<string>();
         var failed = new List<string>();
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var emptyDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         int skippedLinks = 0;
 
         if (!Directory.Exists(root))
@@ -71,9 +83,14 @@ public sealed class FolderScanner
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
                 errors.Add($"Khong doc duoc thu muc {dir}: {ex.Message}");
-                failed.Add(Normalize(Path.GetRelativePath(root, dir)));
+                var failedRel = Normalize(Path.GetRelativePath(root, dir));
+                failed.Add(failedRel);
+                // Khong biet ben trong co gi -> khong duoc coi la "thu muc rong" (se bi tao/xoa sai o phia kia)
+                dirs.Remove(failedRel);
                 continue;
             }
+
+            if (items.Count == 0 && !ReferenceEquals(dir, root)) emptyDirs.Add(Normalize(Path.GetRelativePath(root, dir)));
 
             foreach (var item in items)
             {
@@ -85,7 +102,9 @@ public sealed class FolderScanner
                     {
                         if ((attrs & FileAttributes.ReparsePoint) != 0) { skippedLinks++; continue; }
                         // Thu muc bi loc (vd .git, .foldersync_history) thi khong di vao
-                        if (_filter.IsDirectoryIncluded(rel)) pending.Push(item.FullName);
+                        if (!_filter.IsDirectoryIncluded(rel)) continue;
+                        pending.Push(item.FullName);
+                        if (IsSyncableDirectory(item.Name, attrs)) dirs.Add(rel);
                         continue;
                     }
 
@@ -113,7 +132,19 @@ public sealed class FolderScanner
         }
 
         onProgress?.Invoke(entries.Count, "");
-        return new ScanResult(entries, errors, skippedLinks, failed);
+        emptyDirs.IntersectWith(dirs);
+        return new ScanResult(entries, errors, skippedLinks, failed, Directories: dirs, EmptyDirectories: emptyDirs);
+    }
+
+    // Thu muc he thong o goc o dia (thung rac, System Volume Information) khong bao gio la du lieu cua nguoi dung;
+    // an/he thong thi theo dung tuy chon loc file cua Job. Van duoc DI VAO de quet file nhu truoc day.
+    private bool IsSyncableDirectory(string name, FileAttributes attrs)
+    {
+        if (name.Equals("$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("System Volume Information", StringComparison.OrdinalIgnoreCase)) return false;
+        if (_filter.ExcludeHidden && (attrs & FileAttributes.Hidden) != 0) return false;
+        if (_filter.ExcludeSystem && (attrs & FileAttributes.System) != 0) return false;
+        return true;
     }
 
     private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(150);

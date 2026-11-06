@@ -40,4 +40,7 @@ public enum SyncActionKind
     Skip
 }
 
-public sealed record SyncAction(SyncActionKind Kind, string RelativePath, string Reason, string? TargetPath = null);
+/// <param name="IsDirectory">Hanh dong tren THU MUC RONG (DirectoryPlanner): Copy = tao thu muc o phia dich,
+/// Delete = xoa thu muc neu van rong. Dung chung Kind voi file de UI/chot RootMissing/khoa chay ap dung y het.</param>
+public sealed record SyncAction(SyncActionKind Kind, string RelativePath, string Reason, string? TargetPath = null,
+    bool IsDirectory = false);

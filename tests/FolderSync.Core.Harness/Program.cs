@@ -56,6 +56,13 @@ FCheck("file tam Office", "docs/~$a.docx", false);
 FCheck("trong .git", ".git/config", false);
 FCheck("Thumbs.db", "anh/Thumbs.db", false);
 
+var dirRepro = EmptyDirReproTests.Run();
+pass += dirRepro.pass; fail += dirRepro.fail;
+var dirSync = EmptyDirTests.Run();
+pass += dirSync.pass; fail += dirSync.fail;
+// Chay nhanh rieng nhom thu muc rong khi dang sua (bo qua fuzz 26 phut): --only=dir
+if (args.Contains("--only=dir")) goto Cleanup;
+
 var p1 = P1Tests.Run();
 pass += p1.pass; fail += p1.fail;
 var p2 = P2Tests.Run();
@@ -85,6 +92,7 @@ pass += conflicts.pass; fail += conflicts.fail;
 var hardExclude = ExcludeHardTests.Run();
 pass += hardExclude.pass; fail += hardExclude.fail;
 
+Cleanup:
 // Don thu muc tam cua moi test (tien to "foldersync-") - khong don thi moi lan chay de lai hang tram MB
 // trong %TEMP% va tung lam DAY O C: (SQLite bao "database or disk is full").
 Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); // nha file .db dang bi pool giu

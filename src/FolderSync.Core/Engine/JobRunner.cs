@@ -53,7 +53,9 @@ public sealed class JobRunner : IDisposable
             try
             {
                 var fi = new FileInfo(full);
-                return fi.Exists ? new(true, fi.Length, fi.LastWriteTimeUtc) : new(false, 0, default);
+                if (fi.Exists) return new(true, fi.Length, fi.LastWriteTimeUtc);
+                // Thu muc app vua tao: phai khac "khong ton tai", neu khong nguoi dung xoa no ngay sau do se bi bo qua
+                return Directory.Exists(full) ? new(true, -2, default) : new(false, 0, default);
             }
             catch (Exception) { return new(false, -1, default); } // khong doc duoc -> khong khop -> coi la thay doi that
         }
@@ -128,7 +130,8 @@ public sealed class JobRunner : IDisposable
         backupPropagateDeletes: Options.PropagateDeletes,
         timeTolerance: Options.TimeTolerance,
         createMissingRoots: Options.CreateFoldersIfMissing,
-        scanCache: _cache);
+        scanCache: _cache,
+        syncEmptyDirectories: Options.SyncEmptyFolders);
 
     // ================= Thu cong =================
 
@@ -452,10 +455,14 @@ public sealed class JobRunner : IDisposable
         var full = Normalize(fullPath);
         if (full.Contains(Path.DirectorySeparatorChar + HistoryService.HistoryFolderName, StringComparison.OrdinalIgnoreCase)
             || full.EndsWith(".tmp-sync", StringComparison.OrdinalIgnoreCase)) return;
-        // Tao/sua THU MUC khong tu no can dong bo (file ben trong se ban su kien rieng)
-        if (change is WatcherChangeTypes.Created or WatcherChangeTypes.Changed && Directory.Exists(full)) return;
+        // "Changed" cua THU MUC = noi dung ben trong doi (file ben trong ban su kien rieng). "Created" thu muc chi
+        // can dong bo khi Job dong bo thu muc rong (tao "New folder" o nguon -> phai xuat hien o dich).
+        bool isDir = Directory.Exists(full);
+        if (isDir && (change == WatcherChangeTypes.Changed
+                      || change == WatcherChangeTypes.Created && !Options.SyncEmptyFolders)) return;
         var rel = Path.GetRelativePath(root, full).Replace('\\', '/');
-        if (rel.StartsWith("..", StringComparison.Ordinal) || !_filter.IsIncluded(rel)) return;
+        if (rel.StartsWith("..", StringComparison.Ordinal)) return;
+        if (isDir ? !_filter.IsDirectoryIncluded(rel) : !_filter.IsIncluded(rel)) return;
 
         lock (_lock)
         {

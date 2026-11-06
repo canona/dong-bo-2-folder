@@ -66,8 +66,11 @@ public sealed class SyncSession
         TimeSpan? timeTolerance = null,
         bool createMissingRoots = false,
         ScanCache? scanCache = null,
-        bool hashAllFiles = false)
+        bool hashAllFiles = false,
+        bool syncEmptyDirectories = false)
     {
+        _syncEmptyDirs = syncEmptyDirectories;
+        _backupPropagateDeletes = backupPropagateDeletes;
         _hashAllFiles = hashAllFiles;
         _cache = scanCache ?? new ScanCache();
         _persistCache = scanCache is not null;
@@ -94,6 +97,8 @@ public sealed class SyncSession
     private readonly ScanCache _cache;
     private readonly bool _persistCache;
     private readonly bool _createMissingRoots;
+    private readonly bool _syncEmptyDirs;
+    private readonly bool _backupPropagateDeletes;
 
     private static readonly TimeSpan HashReportInterval = TimeSpan.FromMilliseconds(150);
 
@@ -267,7 +272,8 @@ public sealed class SyncSession
         ScanResult Left,
         ScanResult Right,
         IReadOnlyDictionary<string, FileEntry> State,
-        string? BlockReason);
+        string? BlockReason,
+        IReadOnlySet<string>? DirState = null);
 
     /// <summary>Pha Analyze - khong dong vao bat ky file nao. Huy -> OperationCanceledException.</summary>
     public SessionOutcome AnalyzeOnly(IProgress<SyncProgress>? progress = null, CancellationToken ct = default)
@@ -310,6 +316,16 @@ public sealed class SyncSession
         // File/thu muc khong doc duoc luc quet trong nhu "da xoa" - khong duoc phep ra quyet dinh tren chung
         actions = SkipUnreadable(actions, failedLeft.Concat(failedRight).ToList());
 
+        IReadOnlySet<string>? dirState = null;
+        if (_syncEmptyDirs)
+        {
+            // Sau cung, khi lenh file da chot: thu muc rong trung ten file / nam duoi file se chep phu thuoc vao chung
+            dirState = _store.LoadDirState(_jobId);
+            var dirActions = DirectoryPlanner.Plan(_mode, _backupPropagateDeletes, dirState,
+                leftScan with { Entries = left }, rightScan with { Entries = right }, actions);
+            actions = actions.Concat(SkipUnreadable(dirActions, failedLeft.Concat(failedRight).ToList())).ToList();
+        }
+
         UpdateCache(leftScan.RootMissing ? null : left, rightScan.RootMissing ? null : right);
         PersistCache();
 
@@ -332,7 +348,7 @@ public sealed class SyncSession
             new SessionOutcome(actions, null, scanErrors, left, right, hashedFiles, hashedBytes),
             leftScan with { Entries = left, FailedPaths = failedLeft },
             rightScan with { Entries = right, FailedPaths = failedRight },
-            state, blockReason);
+            state, blockReason, dirState);
     }
 
     /// <summary>Ca 2 pha: Analyze + Execute + luu state/nhat ky. Huy luc phan tich -> OperationCanceledException.</summary>
@@ -360,7 +376,12 @@ public sealed class SyncSession
             progress?.Report(new SyncProgress(SyncProgressStage.Planned, 0, preview.Actions.Count, null,
                 Plan: preview.Actions, BytesTotal: CopyBytes(preview.Actions, ctx.Left.Entries, ctx.Right.Entries),
                 ScanLeft: ctx.Left.Entries, ScanRight: ctx.Right.Entries));
-            var executor = new SyncExecutor(_leftRoot, _rightRoot, _options) { FaultHook = FaultHook };
+            var executor = new SyncExecutor(_leftRoot, _rightRoot, _options)
+            {
+                FaultHook = FaultHook,
+                LeftDirs = _syncEmptyDirs ? ctx.Left.Dirs : null,
+                RightDirs = _syncEmptyDirs ? ctx.Right.Dirs : null
+            };
             result = executor.Execute(preview.Actions, baseline, progress, ct, pause);
         }
 
@@ -379,7 +400,8 @@ public sealed class SyncSession
             var unreadable = ctx.Left.FailedPaths.Concat(ctx.Right.FailedPaths)
                 .Concat(leftAfter.FailedPaths).Concat(rightAfter.FailedPaths).Concat(result.FailedPaths).ToList();
             FaultHook?.Invoke(FaultPoints.AfterExecuteBeforeSaveState, null);
-            _store.SaveState(_jobId, KeepUnreadableState(newState, stateBefore, unreadable));
+            _store.SaveState(_jobId, KeepUnreadableState(newState, stateBefore, unreadable),
+                _syncEmptyDirs ? SyncedDirs(leftAfter, rightAfter, ctx.DirState, unreadable) : null);
             UpdateCache(leftAfter.RootMissing ? null : leftAfter.Entries, rightAfter.RootMissing ? null : rightAfter.Entries);
             PersistCache();
         }
@@ -424,7 +446,7 @@ public sealed class SyncSession
         return actions
             .Select(a => a.Kind != SyncActionKind.Skip && Touches(a, failed)
                 ? new SyncAction(SyncActionKind.Skip, a.RelativePath,
-                    $"Bo qua: khong doc duoc luc quet (du dinh: {a.Kind})", a.TargetPath)
+                    $"Bo qua: khong doc duoc luc quet (du dinh: {a.Kind})", a.TargetPath, a.IsDirectory)
                 : a)
             .ToList();
     }
@@ -452,6 +474,21 @@ public sealed class SyncSession
                 : (d.MtimeUtc - copied.MtimeUtc).Duration() <= _timeTolerance;
             if (same) result[copied.RelativePath] = copied;
         }
+        return result;
+    }
+
+    /// <summary>
+    /// State thu muc moi = thu muc co o CA 2 phia sau khi chay (quet lai). Thu muc nam duoi duong dan khong doc
+    /// duoc giu nguyen state cu - cung ly do nhu KeepUnreadableState (khong suy ra "da xoa" tu du lieu thieu).
+    /// </summary>
+    internal static IReadOnlyCollection<string> SyncedDirs(ScanResult leftAfter, ScanResult rightAfter,
+        IReadOnlySet<string>? before, IReadOnlyList<string> failed)
+    {
+        var result = new HashSet<string>(leftAfter.Dirs, StringComparer.OrdinalIgnoreCase);
+        result.IntersectWith(rightAfter.Dirs);
+        if (before is not null && failed.Count > 0)
+            foreach (var d in before)
+                if (failed.Any(f => IsUnder(d, f))) result.Add(d);
         return result;
     }
 

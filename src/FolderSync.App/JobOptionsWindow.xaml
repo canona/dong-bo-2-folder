@@ -141,6 +141,9 @@
                         </GroupBox>
                         <GroupBox Header="Khi phan tich" Padding="8" Margin="0,10,0,0">
                             <StackPanel>
+                                <CheckBox x:Name="SyncEmptyFoldersCheck" Margin="0,2"
+                                          Content="Dong bo ca thu muc rong (tao / xoa thu muc rong theo che do dong bo)"
+                                          ToolTip="Tat: khong tao va khong xoa thu muc rong o ca 2 phia."/>
                                 <CheckBox x:Name="DetectRenamesCheck" Content="Nhan dien doi ten / di chuyen file (do theo noi dung)" Margin="0,2"/>
                                 <CheckBox x:Name="CompareChecksumsCheck" Content="So sanh noi dung bang hash SHA-256 khi cung kich thuoc ma khac gio sua (khuyen dung)" Margin="0,2"/>
                                 <CheckBox x:Name="FullContentCheck" Margin="20,2,0,2"

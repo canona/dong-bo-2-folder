@@ -405,6 +405,10 @@ public static class HardMonkeyTests
             var src = Full(Root(left), p);
             var dst = Full(Root(left), dest);
             Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+            // Cung quy uoc voi WriteDisk: thu muc rong con sot (tu ban 0.3.2 engine khong con don MOI thu muc rong)
+            // trung ten file sap doi ten toi -> nguoi dung xoa no truoc, nhu khi tao file
+            if (Directory.Exists(dst) && !Directory.EnumerateFiles(dst, "*", SearchOption.AllDirectories).Any())
+                Directory.Delete(dst, true);
             File.Move(src, dst);
             var f = M(left)[p];
             M(left).Remove(p);

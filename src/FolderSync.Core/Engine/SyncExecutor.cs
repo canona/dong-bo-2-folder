@@ -101,6 +101,19 @@ public sealed class SyncExecutor
     /// <summary>Diem chot chich loi (xem FaultPoints) - mac dinh null, chi harness gan.</summary>
     internal Action<string, string?>? FaultHook { get; set; }
 
+    /// <summary>
+    /// Thu muc co o moi phia LUC QUET (null = Job khong dong bo thu muc rong: don thu muc cha rong nhu cu).
+    /// Co gia tri thi chi don thu muc cha rong o 1 phia khi phia KIA khong co thu muc do - neu khong, xoa file
+    /// cuoi cung cua 'a/' o Trai se don 'a' o Phai du 'a' van con (rong) o Trai, roi lan sau lan truyen xoa 'a'.
+    /// </summary>
+    internal IReadOnlySet<string>? LeftDirs { get; init; }
+    internal IReadOnlySet<string>? RightDirs { get; init; }
+
+    // Thu muc cha cua file vua xoa/doi ten: don lai lan cuoi sau ca lan chay (lan don ngay luc xoa co the
+    // that bai vi Explorer/antivirus dang giu thu muc). KHONG don toan cay: ban cu xoa MOI thu muc rong o ca
+    // 2 phia moi lan chay - ke ca thu muc nguoi dung vua tao o nguon (loi bao Dien Bien 11/2026).
+    private readonly List<(bool Left, string Rel)> _pruneLater = new();
+
     public SyncExecutor(string leftRoot, string rightRoot, SyncOptions? options = null)
     {
         _leftRoot = leftRoot;
@@ -127,7 +140,8 @@ public sealed class SyncExecutor
         _throttle = _options.MaxBytesPerSecond > 0 ? new BandwidthThrottle(_options.MaxBytesPerSecond) : null;
 
         // --- Chot an toan xoa hang loat: kiem tra truoc khi thuc thi bat ky lenh nao ---
-        var deletes = actions.Count(a => a.Kind is SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight);
+        // Xoa thu muc rong khong mat du lieu -> khong tinh vao chot (chot RootMissing van chan ca thu muc)
+        var deletes = actions.Count(a => a.Kind is SyncActionKind.DeleteLeft or SyncActionKind.DeleteRight && !a.IsDirectory);
         if (!_options.Force && deletes > 0)
         {
             bool overPercent = baselineFileCount > 0 && deletes * 100.0 / baselineFileCount > _options.MaxDeletePercent;
@@ -156,11 +170,19 @@ public sealed class SyncExecutor
             string? destination = null;
             try
             {
+                if (action.IsDirectory)
+                {
+                    destination = ExecuteDirectory(action, result);
+                    if (!silent)
+                        progress?.Report(new SyncProgress(SyncProgressStage.Completed, i, actions.Count, action, destination));
+                    continue;
+                }
                 switch (action.Kind)
                 {
                     case SyncActionKind.CopyLeftToRight:
                         // TargetPath (neu co) la duong dan dich khac duong dan nguon - dung cho ban "conflict copy"
                         destination = Full(_rightRoot, action.TargetPath ?? action.RelativePath);
+                        RemoveEmptyTreeBlocking(destination);
                         var hashLR = AtomicCopy(Full(_leftRoot, action.RelativePath), destination,
                                    _rightRoot, action.TargetPath ?? action.RelativePath, ReporterFor(progress, i, actions), ct);
                         Remember(result, true, action.RelativePath, false, action.TargetPath ?? action.RelativePath, hashLR);
@@ -168,6 +190,7 @@ public sealed class SyncExecutor
                         break;
                     case SyncActionKind.CopyRightToLeft:
                         destination = Full(_leftRoot, action.TargetPath ?? action.RelativePath);
+                        RemoveEmptyTreeBlocking(destination);
                         var hashRL = AtomicCopy(Full(_rightRoot, action.RelativePath), destination,
                                    _leftRoot, action.TargetPath ?? action.RelativePath, ReporterFor(progress, i, actions), ct);
                         Remember(result, false, action.RelativePath, true, action.TargetPath ?? action.RelativePath, hashRL);
@@ -175,20 +198,20 @@ public sealed class SyncExecutor
                         break;
                     case SyncActionKind.DeleteLeft:
                         destination = DeleteWithHistory(Full(_leftRoot, action.RelativePath), _leftRoot, action.RelativePath);
-                        PruneEmptyParents(_leftRoot, action.RelativePath);
+                        PruneEmptyParents(left: true, action.RelativePath);
                         result.Deleted++;
                         break;
                     case SyncActionKind.DeleteRight:
                         destination = DeleteWithHistory(Full(_rightRoot, action.RelativePath), _rightRoot, action.RelativePath);
-                        PruneEmptyParents(_rightRoot, action.RelativePath);
+                        PruneEmptyParents(left: false, action.RelativePath);
                         result.Deleted++;
                         break;
                     case SyncActionKind.MoveLeft:
-                        destination = MoveWithin(_leftRoot, action);
+                        destination = MoveWithin(left: true, action);
                         result.Moved++;
                         break;
                     case SyncActionKind.MoveRight:
-                        destination = MoveWithin(_rightRoot, action);
+                        destination = MoveWithin(left: false, action);
                         result.Moved++;
                         break;
                     case SyncActionKind.Conflict:
@@ -218,9 +241,63 @@ public sealed class SyncExecutor
             }
         }
 
-        PruneEmptyDirs(_leftRoot);
-        PruneEmptyDirs(_rightRoot);
+        foreach (var (left, rel) in _pruneLater.ToList()) PruneEmptyParents(left, rel, retry: true);
         return result;
+    }
+
+    /// <summary>
+    /// Lenh chep FILE vao duong dan dang la THU MUC khong chua file nao (chi con thu muc con rong sot lai, vd nguoi
+    /// dung doi thu muc -> file o phia kia): xoa cay rong do de chep duoc. Ban &lt;= 0.3.1 nho PruneEmptyDirs don toan
+    /// cay nen khong gap; bo buoc do thi lenh chep loi I/O mai (fuzz HARD-A1 2 chieu bat duoc). Con bat ky file nao
+    /// (ke ca an / bi loc) hoac lien ket (junction/symlink) ben trong -> KHONG dung, de loi I/O bao ro.
+    /// </summary>
+    private static void RemoveEmptyTreeBlocking(string destFull)
+    {
+        if (!Directory.Exists(destFull)) return;
+        var all = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0, IgnoreInaccessible = false };
+        foreach (var entry in new DirectoryInfo(destFull).EnumerateFileSystemInfos("*", all))
+            if (entry is FileInfo || (entry.Attributes & FileAttributes.ReparsePoint) != 0) return;
+        Directory.Delete(destFull, recursive: true);
+    }
+
+    /// <summary>
+    /// Tao thu muc rong o phia dich / xoa thu muc rong. Xoa KHONG de quy: luc chay ma thu muc da co file
+    /// (nguoi dung vua chep vao) thi Directory.Delete bao loi -> giu nguyen, khong bao gio xoa du lieu.
+    /// </summary>
+    private string? ExecuteDirectory(SyncAction action, SyncResult result)
+    {
+        switch (action.Kind)
+        {
+            case SyncActionKind.CopyLeftToRight:
+            case SyncActionKind.CopyRightToLeft:
+            {
+                var root = action.Kind == SyncActionKind.CopyLeftToRight ? _rightRoot : _leftRoot;
+                // CreateDirectory tao ca chuoi cha -> USB bi rut thi se tao lai goc rong (bat bien 2): tu choi
+                if (!Directory.Exists(root)) throw new DirectoryNotFoundException($"Thu muc goc khong ton tai: {root}");
+                var full = Full(root, action.RelativePath);
+                Directory.CreateDirectory(full);
+                result.Copied++;
+                return full;
+            }
+            case SyncActionKind.DeleteLeft:
+            case SyncActionKind.DeleteRight:
+            {
+                bool left = action.Kind == SyncActionKind.DeleteLeft;
+                var full = Full(left ? _leftRoot : _rightRoot, action.RelativePath);
+                if (Directory.Exists(full))
+                {
+                    if (Directory.EnumerateFileSystemEntries(full).Any())
+                        throw new IOException($"Thu muc khong con rong, giu nguyen: {action.RelativePath}");
+                    Directory.Delete(full, recursive: false);
+                }
+                PruneEmptyParents(left, action.RelativePath);
+                result.Deleted++;
+                return null;
+            }
+            default:
+                result.Skipped++;
+                return null;
+        }
     }
 
     /// <summary>
@@ -260,6 +337,7 @@ public sealed class SyncExecutor
             var paths = left ? createPaths.Left : createPaths.Right;
             var parents = left ? createParents.Left : createParents.Right;
             if (parents.Contains(a.RelativePath)) return true; // xoa file 'a', roi tao 'a/x'
+            if (a.IsDirectory && paths.Contains(a.RelativePath)) return true; // xoa thu muc rong 'a', roi chep file 'a'
             for (int i = a.RelativePath.LastIndexOf('/'); i > 0; i = a.RelativePath.LastIndexOf('/', i - 1))
                 if (paths.Contains(a.RelativePath[..i])) return true; // xoa 'a/x', roi tao file 'a'
             return false;
@@ -272,10 +350,13 @@ public sealed class SyncExecutor
     /// <summary>
     /// Sau khi xoa file: don cac thu muc cha vua rong (toi goc, khong dong vao goc / history) de dong thoi
     /// cho trong duong dan cho lenh chep file trung ten thu muc ('a/x' xoa het -> chep file 'a').
-    /// Chi xoa thu muc RONG HOAN TOAN - khong bao gio xoa du lieu.
+    /// Chi xoa thu muc RONG HOAN TOAN - khong bao gio xoa du lieu. Dong bo thu muc rong bat (LeftDirs/RightDirs
+    /// co gia tri) thi dung lai o thu muc ma phia kia van co: nguoi dung chi xoa file, khong xoa thu muc.
     /// </summary>
-    private static void PruneEmptyParents(string root, string rel)
+    private void PruneEmptyParents(bool left, string rel, bool retry = false)
     {
+        var root = left ? _leftRoot : _rightRoot;
+        var otherDirs = left ? RightDirs : LeftDirs;
         try
         {
             var rootFull = Path.GetFullPath(root);
@@ -284,12 +365,17 @@ public sealed class SyncExecutor
                    && !Path.GetFileName(dir).Equals(".foldersync_history", StringComparison.OrdinalIgnoreCase)
                    && Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
             {
+                if (otherDirs is not null
+                    && otherDirs.Contains(FolderScanner.Normalize(Path.GetRelativePath(rootFull, dir)))) return;
                 Directory.Delete(dir);
                 dir = Path.GetDirectoryName(dir);
             }
         }
-        catch (IOException) { /* don dep la viec phu - de PruneEmptyDirs cuoi lan chay lo */ }
-        catch (UnauthorizedAccessException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Don dep la viec phu (thu muc dang bi Explorer/antivirus giu) - thu lai 1 lan cuoi lan chay
+            if (!retry) _pruneLater.Add((left, rel));
+        }
     }
 
     /// <summary>Ghi lai hash vua tinh cua ca file nguon va file dich (size/mtime doc lai SAU khi ghi).</summary>
@@ -514,8 +600,9 @@ public sealed class SyncExecutor
         File.Copy(destFull, hist, overwrite: true);
     }
 
-    private string MoveWithin(string root, SyncAction action)
+    private string MoveWithin(bool left, SyncAction action)
     {
+        var root = left ? _leftRoot : _rightRoot;
         var from = Full(root, action.RelativePath);
         var to = Full(root, action.TargetPath!);
         if (!File.Exists(from)) throw new IOException($"Khong tim thay file nguon de doi ten: {action.RelativePath}");
@@ -524,24 +611,7 @@ public sealed class SyncExecutor
         bool caseOnly = string.Equals(from, to, StringComparison.OrdinalIgnoreCase);
         if (!caseOnly && File.Exists(to)) PreserveExisting(to, root, action.TargetPath!);
         File.Move(from, to, overwrite: true);
-        PruneEmptyParents(root, action.RelativePath);
+        PruneEmptyParents(left, action.RelativePath);
         return to;
-    }
-
-    private static void PruneEmptyDirs(string root)
-    {
-        if (!Directory.Exists(root)) return;
-        try
-        {
-            foreach (var dir in Directory.GetDirectories(root, "*", SearchOption.AllDirectories)
-                         .OrderByDescending(d => d.Length))
-            {
-                var name = Path.GetFileName(dir);
-                if (name.Equals(".foldersync_history", StringComparison.OrdinalIgnoreCase)) continue;
-                if (!Directory.EnumerateFileSystemEntries(dir).Any())
-                    Directory.Delete(dir);
-            }
-        }
-        catch (IOException) { /* don dep thu muc rong la viec phu - bo qua khi bi khoa */ }
     }
 }

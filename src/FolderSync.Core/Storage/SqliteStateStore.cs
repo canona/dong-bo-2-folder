@@ -78,6 +78,13 @@ public sealed class SqliteStateStore : IDisposable
                 hash TEXT NOT NULL,
                 PRIMARY KEY (job_id, side, rel_path)
             );
+            -- Thu muc da co o CA 2 phia sau lan dong bo thanh cong gan nhat ("State cu" cua thu muc rong).
+            -- Bang moi: Job cu chua co dong nao -> chi tao thu muc, khong bao gio suy ra "da xoa".
+            CREATE TABLE IF NOT EXISTS dir_state (
+                job_id TEXT NOT NULL,
+                rel_path TEXT NOT NULL,
+                PRIMARY KEY (job_id, rel_path)
+            );
             """;
         cmd.ExecuteNonQuery();
 
@@ -124,7 +131,7 @@ public sealed class SqliteStateStore : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             using var tx = _conn.BeginTransaction();
-            foreach (var table in new[] { "jobs", "file_state", "sync_runs", "hash_cache" })
+            foreach (var table in new[] { "jobs", "file_state", "sync_runs", "hash_cache", "dir_state" })
             {
                 using var cmd = _conn.CreateCommand();
                 cmd.Transaction = tx;
@@ -201,7 +208,7 @@ public sealed class SqliteStateStore : IDisposable
                 using var clear = _conn.CreateCommand();
                 clear.Transaction = tx;
                 // Cache hash cung theo duong dan tuong doi cua folder CU -> xoa luon
-                clear.CommandText = "DELETE FROM file_state WHERE job_id = $id; DELETE FROM hash_cache WHERE job_id = $id;";
+                clear.CommandText = "DELETE FROM file_state WHERE job_id = $id; DELETE FROM hash_cache WHERE job_id = $id; DELETE FROM dir_state WHERE job_id = $id;";
                 clear.Parameters.AddWithValue("$id", id);
                 clear.ExecuteNonQuery();
             }
@@ -244,7 +251,24 @@ public sealed class SqliteStateStore : IDisposable
         }
     }
 
-    public void SaveState(string jobId, IReadOnlyDictionary<string, FileEntry> entries)
+    public IReadOnlySet<string> LoadDirState(string jobId)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT rel_path FROM dir_state WHERE job_id = $job";
+            cmd.Parameters.AddWithValue("$job", jobId);
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read()) result.Add(reader.GetString(0));
+            return result;
+        }
+    }
+
+    /// <param name="dirs">Thu muc da dong bo (null = khong dung vao dir_state - Job tat dong bo thu muc rong).
+    /// Ghi cung transaction voi file_state: state file va state thu muc khong bao gio lech nhau.</param>
+    public void SaveState(string jobId, IReadOnlyDictionary<string, FileEntry> entries, IReadOnlyCollection<string>? dirs = null)
     {
         lock (_sync)
         {
@@ -277,6 +301,26 @@ public sealed class SqliteStateStore : IDisposable
                 pMtime.Value = e.MtimeUtc.Ticks;
                 pHash.Value = (object?)e.Hash ?? DBNull.Value;
                 ins.ExecuteNonQuery();
+            }
+            if (dirs is not null)
+            {
+                using (var delDirs = _conn.CreateCommand())
+                {
+                    delDirs.Transaction = tx;
+                    delDirs.CommandText = "DELETE FROM dir_state WHERE job_id = $job";
+                    delDirs.Parameters.AddWithValue("$job", jobId);
+                    delDirs.ExecuteNonQuery();
+                }
+                using var insDir = _conn.CreateCommand();
+                insDir.Transaction = tx;
+                insDir.CommandText = "INSERT OR IGNORE INTO dir_state (job_id, rel_path) VALUES ($job, $path)";
+                insDir.Parameters.AddWithValue("$job", jobId);
+                var pDir = insDir.Parameters.Add("$path", SqliteType.Text);
+                foreach (var d in dirs)
+                {
+                    pDir.Value = d;
+                    insDir.ExecuteNonQuery();
+                }
             }
             tx.Commit();
         }

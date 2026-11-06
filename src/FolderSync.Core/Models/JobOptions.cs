@@ -57,6 +57,12 @@ public sealed class JobOptions
 
     /// <summary>Gia tri dua vao SyncOptions.MaxBytesPerSecond (0 = khong gioi han).</summary>
     public long MaxCopyBytesPerSecond => MaxCopySpeedMBps > 0 ? MaxCopySpeedMBps * 1024L * 1024L : 0;
+    /// <summary>
+    /// Dong bo ca thu muc RONG (tao / xoa theo che do). Mac dinh BAT cho ca Job cu (JSON khong co truong nay):
+    /// Job cu chua co dir_state nen lan dau chi TAO thu muc, khong suy ra xoa - khong co hanh vi pha huy moi.
+    /// Tat = khong dong vao thu muc rong (khong tao, khong xoa) - KHAC ban &lt;= 0.3.1 von xoa moi thu muc rong.
+    /// </summary>
+    public bool SyncEmptyFolders { get; set; } = true;
     /// <summary>Nguong chot an toan xoa hang loat rieng cua Job (% so file tham chieu).</summary>
     public int SafetyMaxDeletePercent { get; set; } = 50;
 
